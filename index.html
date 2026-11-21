@@ -3,572 +3,552 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
-<title>Stock Desk</title>
+<title>Stock Mover</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+
+<!--
+  SETUP (read once)
+  1. Firebase console > Build > Authentication > Sign-in method > enable Google.
+  2. Authentication > Settings > Authorized domains: add "localhost" (or your host).
+  3. Build > Firestore Database > create. Paste your web-app config into FIREBASE_CONFIG below.
+  4. Serve over http, NOT file:// (Google sign-in popups do not work from file://):
+         python -m http.server 5500      then open http://localhost:5500
+  5. Starter Firestore rules (tighten before real use):
+       rules_version = '2';
+       service cloud.firestore {
+         match /databases/{db}/documents {
+           match /users/{uid} {
+             allow read: if request.auth != null && request.auth.uid == uid;
+             // role can be set once, at first login, to a known value; never changed from the client
+             allow create: if request.auth != null && request.auth.uid == uid
+               && request.resource.data.role in ['merchandiser','warehouse','area_manager'];
+             allow update: if false;
+           }
+           match /{col}/{id} {
+             allow read: if request.auth != null && col in ['moves','findings','rules','calendar'];
+             // merchandisers decide moves; seeding needs temporary open writes (see seed button)
+             allow update: if request.auth != null && col == 'moves'
+               && get(/databases/$(db)/documents/users/$(request.auth.uid)).data.role == 'merchandiser';
+           }
+         }
+       }
+-->
+
 <style>
-:root{color-scheme:light;--bg:#FFFFFF;--text:#1F1B1A;--muted:#6E6762;--line:#ECE8E5;--accent:#7F1D2D;--ok:#2E7D4F;--warn:#9A5B00;--bad:#B42318;--gutter:16px;--sans:'DM Sans',system-ui,-apple-system,sans-serif}
+:root{
+  --ink:#2b2420; --ink-soft:#6b5f56; --paper:#f6efe2; --panel:#fffaf0; --line:#e3d6bf;
+  --maroon:#6e1f2b; --maroon-dark:#4d1520; --saffron:#d9801f; --teal:#2f6f68; --red:#b3261e; --ok:#2f6f43;
+  --serif:"Playfair Display",Georgia,"Times New Roman",serif;
+  --sans:"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
 *{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:400 15px/1.45 var(--sans);overflow-wrap:anywhere}
-.wrap{max-width:960px;margin:0 auto;padding:0 var(--gutter) 96px}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-h1,h2{margin:0;font-weight:700}
-button{font:inherit;cursor:pointer}
-.tb{background:none;border:0;padding:6px 0;color:var(--accent);font-weight:500;font-size:14px}
-.tb:hover{text-decoration:underline}
-.tb:disabled{color:var(--muted);cursor:default;text-decoration:none}
-.tb.mute{color:var(--muted)}
-.primary{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-weight:500;font-size:14px;min-height:40px}
-.primary:disabled{opacity:.45;cursor:default}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:8px;vertical-align:middle}
-.dot.bad{background:var(--bad)} .dot.na{background:var(--warn)}
-.muted{color:var(--muted)}
-header{display:flex;justify-content:space-between;align-items:baseline;padding:18px 0;border-bottom:1px solid var(--line)}
-.brand{font-weight:700;font-size:15px}
-header .muted{font-size:13px}
-.summary{padding:28px 0 20px}
-.summary h1{font-size:22px;line-height:1.3;margin-bottom:14px}
-.nums{display:flex;gap:28px;flex-wrap:wrap}
-.nums div{font-size:13px;color:var(--muted)}
-.nums b{display:block;font-size:32px;line-height:1.1;font-weight:700;color:var(--text)}
-.nums .hl b{color:var(--accent)}
-.val{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px 0;font-size:14px}
-.val button{background:none;border:0;padding:0;color:var(--text);text-align:left;width:100%}
-.vd{padding:10px 0 0;font-size:13px;color:var(--muted)}
-.vd span{display:inline-block;margin:0 14px 4px 0}
-.sec{padding:32px 0 6px}
-.sech{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:8px}
-.sech h2{font-size:22px}
-.filters{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:14px 0 0;font-size:13px;color:var(--muted)}
-select,input[type=number]{font:inherit;font-size:14px;color:var(--text);background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-height:36px;max-width:100%}
-.row{display:grid;grid-template-columns:1fr;gap:8px;padding:16px 0;border-bottom:1px solid var(--line)}
-.rt{display:flex;gap:10px;align-items:flex-start}
-.rt input[type=checkbox]{appearance:none;-webkit-appearance:none;width:20px;height:20px;margin:1px 0 0;border:1.5px solid var(--muted);border-radius:50%;flex:none;cursor:pointer;background:#fff;display:grid;place-content:center}
-.rt input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
-.rt input[type=checkbox]:checked:after{content:"";width:5px;height:9px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
-.rt input[type=checkbox]:disabled{opacity:.4;cursor:default}
-.reason{font-weight:500;font-size:15px}
-.sub{font-size:13px;color:var(--muted)}
-.tag{color:var(--warn);font-size:13px}
-.tag:before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--warn);margin-right:5px;vertical-align:middle}
-.c{display:none;font-size:13px}
-.acts{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
-.st{font-size:13px;font-weight:500}
-.st.Approved{color:var(--ok)} .st.Skipped{color:var(--bad)}
-.row.Skipped .reason{color:var(--muted);text-decoration:line-through}
-.qedit{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
-.qedit input{width:80px}
-@media(min-width:900px){
- .row{grid-template-columns:minmax(0,1fr) 210px;gap:24px;align-items:start}
- .acts{justify-content:flex-end}
- .qedit{grid-column:1/-1}
-}
-.actl{font-weight:600;font-size:16px;line-height:1.35}
-.why{font-size:14px;margin-top:6px}
-.because{font-size:13px;color:var(--warn);margin-top:6px}
-.because b{font-weight:500}
-.more{padding:12px 0}
-.bulk{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:14px 0;border-bottom:1px solid var(--line)}
-.find{padding:14px 0;border-bottom:1px solid var(--line)}
-.find b{font-weight:500}
-.find p{margin:2px 0 0;font-size:13px;color:var(--muted)}
-.find .kind{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-details{border-bottom:1px solid var(--line)}
-summary{cursor:pointer;padding:12px 0;font-weight:500;font-size:15px}
-details details{margin-left:0;border-bottom:0}
-details details summary{font-weight:400;font-size:14px}
-.brow{padding:7px 0;border-top:1px solid var(--line);font-size:13px}
-ul.as{margin:4px 0 14px;padding-left:18px;font-size:13px;color:var(--muted)}
-table{border-collapse:collapse;width:100%;font-size:13px}
-td{padding:6px 10px 6px 0;border-top:1px solid var(--line);vertical-align:top}
-.empty,.note{color:var(--muted);font-size:13px;padding:10px 0}
-.err{padding:40px 0}
-.tabs{display:flex;gap:22px;overflow-x:auto;border-bottom:1px solid var(--line);margin-top:6px;scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
-.tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:14px 0 10px;color:var(--muted);font-weight:500;font-size:14px;white-space:nowrap;flex:none}
-.tabs button[aria-selected=true]{color:var(--text);border-bottom-color:var(--accent)}
-.tabs button:hover{color:var(--text)}
-.lead{font-size:13px;color:var(--muted);margin:14px 0 4px}
-.gh{display:flex;justify-content:space-between;gap:12px;padding:22px 0 6px;border-bottom:1px solid var(--line);font-weight:700}
-.gh span{font-weight:400;color:var(--muted);font-size:13px}
-.line{padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
-.line .sub{display:block}
-h3.bh{font-size:15px;margin:26px 0 4px}
-.sticky{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);z-index:5}
-.sticky div{max-width:960px;margin:0 auto;padding:12px var(--gutter);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.sticky .primary{flex:0 1 auto}
-header{position:relative}
-.who{position:relative}
-.whobtn{display:flex;align-items:center;gap:10px;background:none;border:0;padding:4px 0;text-align:left;color:var(--text)}
-.av{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
-.wn{display:flex;flex-direction:column;line-height:1.2;font-size:14px}
-.wn span{font-size:12px;color:var(--muted)}
-.menu{position:absolute;right:0;top:100%;margin-top:6px;background:#fff;border:1px solid var(--line);border-radius:8px;width:min(320px,calc(100vw - 32px));max-height:70vh;overflow:auto;z-index:20;padding:6px 0}
-.menu h3{margin:10px 14px 2px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500}
-.mi{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 14px;font-size:14px;color:var(--text)}
-.mi:hover{background:#F7F4F2}
-.mi[aria-current=true]{font-weight:700}
-.mi small{display:block;color:var(--muted);font-weight:400;font-size:12px}
-.gate{max-width:420px;margin:0 auto;padding:56px 0 40px}
-.gate h1{font-size:32px;margin:18px 0 6px}
-.gate label{display:block;font-size:13px;color:var(--muted);margin:22px 0 6px}
-.gate input[type=email]{width:100%;font:inherit;font-size:16px;padding:10px 12px;min-height:44px;border:1px solid var(--line);border-radius:8px}
-.gate input[aria-invalid=true]{border-color:var(--bad)}
-.gate .primary{width:100%;margin-top:14px}
-.ferr{color:var(--bad);font-size:13px;margin:6px 0 0;min-height:18px}
-.gate h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500;margin:36px 0 4px}
-.ubtn{display:flex;justify-content:space-between;gap:12px;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:11px 0;font-size:14px;color:var(--text)}
-.ubtn span{color:var(--muted);font-size:13px;text-align:right}
-.ubtn:hover b{color:var(--accent)}
-.foot{font-size:12px;color:var(--muted);margin:40px 0 0}
-.rq{font-size:13px;color:var(--muted);cursor:help}
-dialog{border:0;border-radius:12px;width:min(400px,calc(100vw - 32px));padding:24px;box-shadow:0 10px 40px rgba(0,0,0,.2);color:var(--text)}
-dialog::backdrop{background:rgba(0,0,0,.35)}
-dialog h2{font-size:22px;margin:0 0 6px}
-dialog label{display:block;font-size:13px;color:var(--muted);margin:14px 0 6px}
-dialog select{width:100%}
-dialog .primary{width:100%;margin-top:18px}
-dialog .tb{display:block;margin:8px auto 0}
+html,body{margin:0}
+body{font-family:var(--sans);background:var(--paper);color:var(--ink);line-height:1.5;font-size:15px}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--saffron);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* header */
+.top{background:var(--maroon);color:#fbeedb;display:flex;align-items:center;gap:16px;padding:12px 24px;flex-wrap:wrap}
+.brand{font-family:var(--serif);font-size:24px;font-weight:700;letter-spacing:.2px;margin-right:auto}
+.brand small{font-family:var(--sans);font-weight:400;font-size:13px;opacity:.75;margin-left:10px}
+.who{display:flex;align-items:center;gap:10px;font-size:14px}
+.who img{width:30px;height:30px;border-radius:50%;border:2px solid #fbeedb55}
+.rolechip{background:#fbeedb;color:var(--maroon-dark);padding:2px 10px;border-radius:999px;font-weight:700;font-size:13px}
+.btn{border:1px solid var(--line);background:var(--panel);padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--maroon)}
+.btn.primary{background:var(--saffron);border-color:var(--saffron);color:#2b1a05;font-weight:700}
+.btn.primary:hover{background:#c27015}
+.btn.ghost{background:transparent;color:#fbeedb;border-color:#fbeedb66}
+.btn.sm{padding:3px 10px;font-size:13px}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* login */
+.login{min-height:calc(100vh - 56px);display:grid;place-items:center;padding:24px}
+.login-card{max-width:460px;text-align:left}
+.login-card h1{font-family:var(--serif);font-size:48px;line-height:1.05;margin:0 0 12px;color:var(--maroon)}
+.login-card p{color:var(--ink-soft);margin:0 0 24px;max-width:40ch}
+.gbtn{display:inline-flex;align-items:center;gap:12px;background:#fff;border:1px solid #cfc3ad;border-radius:6px;padding:10px 18px;font-weight:700;cursor:pointer}
+.gbtn:hover{border-color:var(--maroon)}
+.gbtn svg{width:20px;height:20px}
+.cfgwarn{background:#fde8e6;border:1px solid var(--red);color:var(--red);padding:10px 14px;border-radius:6px;margin-bottom:18px;font-size:14px}
+
+/* layout */
+main{max-width:1280px;margin:0 auto;padding:24px}
+.stats{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:20px;align-items:baseline}
+.stat b{font-family:var(--serif);font-size:30px;display:block;line-height:1.1}
+.stat span{font-size:13px;color:var(--ink-soft)}
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--line);margin-bottom:16px}
+.tab{background:none;border:0;padding:8px 16px;cursor:pointer;font-weight:500;color:var(--ink-soft);border-bottom:3px solid transparent;margin-bottom:-2px}
+.tab[aria-selected=true]{color:var(--maroon);border-bottom-color:var(--maroon);font-weight:700}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.bar .grow{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+select,input[type=number],textarea{background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+
+/* table */
+.tablewrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:900px}
+th{font-weight:700;font-size:13px;text-align:left;padding:10px 12px;border-bottom:2px solid var(--line);color:var(--ink-soft);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.why{max-width:420px;font-size:14px}
+.type{font-weight:700;white-space:nowrap}
+.type.wh_store{color:var(--teal)} .type.store_store{color:var(--maroon)} .type.pull_back{color:var(--saffron)}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);margin:0 4px 4px 0;background:#fff}
+.tag.warn{border-color:var(--saffron);color:#8a4b00;background:#fff3de}
+.tag.bad{border-color:var(--red);color:var(--red);background:#fde8e6}
+.tag.good{border-color:var(--ok);color:var(--ok);background:#e6f4ea}
+tr.violation td{background:#fdf0ee}
+tr.skipped td{opacity:.55}
+.actions{display:flex;gap:6px;white-space:nowrap}
+.qty{width:70px}
+.empty{padding:36px;text-align:center;color:var(--ink-soft)}
+
+/* cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--teal);border-radius:8px;padding:14px 16px}
+.card.high{border-left-color:var(--red)} .card.med{border-left-color:var(--saffron)}
+.card h3{margin:0 0 6px;font-size:16px}
+.card p{margin:0;font-size:14px;color:var(--ink-soft)}
+.group{margin-bottom:22px}
+.group h3{font-family:var(--serif);font-size:20px;margin:0 0 8px}
+
+/* dialog */
+dialog{border:0;border-radius:10px;padding:24px;max-width:480px;width:calc(100% - 32px);background:var(--panel);color:var(--ink);box-shadow:0 20px 60px #0006}
+dialog::backdrop{background:#2b242099}
+dialog h2{font-family:var(--serif);margin:0 0 6px;font-size:26px}
+dialog p{margin:0 0 16px;color:var(--ink-soft)}
+.roleopt{display:block;border:2px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;cursor:pointer;background:#fff}
+.roleopt:has(input:checked){border-color:var(--maroon);background:#fbeef0}
+.roleopt input{margin-right:8px;accent-color:var(--maroon)}
+.roleopt b{display:block} .roleopt span{font-size:13px;color:var(--ink-soft);margin-left:24px}
+.dlgbtns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:6px;z-index:50;max-width:90vw}
+
+/* DELETE-SEED-BUTTON CSS START */
+#seedBtn{position:fixed;right:12px;bottom:12px;z-index:40;font-size:12px;padding:5px 10px;border:1px dashed var(--red);background:#fff;color:var(--red);border-radius:6px;cursor:pointer;opacity:.85}
+#seedBtn:hover{opacity:1}
+/* DELETE-SEED-BUTTON CSS END */
+
+@media (max-width:640px){.top{padding:10px 14px}main{padding:14px}.login-card h1{font-size:38px}}
+@media (prefers-reduced-motion:no-preference){dialog[open]{animation:pop .18s ease-out}@keyframes pop{from{transform:translateY(8px);opacity:0}}}
 </style>
-<script>
-/* Data loader: out/moves.js, else demo/moves.js, else demo/sample.js (dev fixture). No fetch(). */
-var FALLBACKS=['demo/moves.js','demo/sample.js'];
-function nextSrc(){
-  var s=FALLBACKS.shift();
-  if(!s){ window.__noData=true; if(window.boot) boot(); return; }
-  var el=document.createElement('script'); el.src=s;
-  el.onload=function(){ if(window.boot) boot(); };
-  el.onerror=nextSrc;
-  document.head.appendChild(el);
-}
-</script>
 </head>
 <body>
-<div class="wrap" id="app"><p class="empty">Loading...</p></div>
-<dialog id="skipDlg" aria-labelledby="skipTitle">
-  <form method="dialog" id="skipForm">
-    <h2 id="skipTitle">Skip this move?</h2>
-    <p class="sub" id="skipWhat"></p>
-    <label for="skipReason">Reason</label>
-    <select id="skipReason">
-      <option>Stock already on its way</option><option>Store asked to hold</option>
-      <option>Count mismatch on shelf</option><option>Festival display plan</option><option>Other</option>
-    </select>
-    <button class="primary" type="submit" value="ok">Skip move</button>
-    <button class="tb mute" type="submit" value="cancel" formnovalidate>Not now</button>
+
+<header class="top">
+  <div class="brand">Stock Mover<small>Right stock. Right store. Right size.</small></div>
+  <div class="who" id="who" hidden>
+    <img id="avatar" alt="" referrerpolicy="no-referrer">
+    <span id="uname"></span>
+    <span class="rolechip" id="rolechip"></span>
+    <button class="btn ghost sm" id="signOut">Sign out</button>
+  </div>
+</header>
+
+<!-- Signed-out screen -->
+<section class="login" id="loginView">
+  <div class="login-card">
+    <div class="cfgwarn" id="cfgWarn" hidden>Firebase is not configured. Paste your web-app config into <code>FIREBASE_CONFIG</code> in this file.</div>
+    <h1>Today's stock moves, ready to approve.</h1>
+    <p>Sign in with Google. Your role decides what you see: the merchandiser's approval list, the warehouse pick list, or an area manager's read-only view.</p>
+    <button class="gbtn" id="googleBtn">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.500 0 12-2.100 16-5.800l-7.600-5.900c-2.100 1.400-4.900 2.300-8.400 2.300-6.300 0-11.600-4.100-13.500-9.800l-7.900 6.100C6.500 42.600 14.600 48 24 48z"/></svg>
+      Sign in with Google
+    </button>
+  </div>
+</section>
+
+<!-- Signed-in app -->
+<main id="appView" hidden>
+  <div class="stats" id="stats"></div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div id="panel"></div>
+</main>
+
+<!-- First-login role popup (cannot be dismissed) -->
+<dialog id="roleDlg">
+  <h2>Welcome. What's your role?</h2>
+  <p>This sets what you see in Stock Mover. You choose once.</p>
+  <form id="roleForm">
+    <div id="roleOpts"></div>
+    <div class="dlgbtns"><button class="btn primary" type="submit">Save role and continue</button></div>
   </form>
 </dialog>
-<script src="config/users.js"></script>
-<script src="out/moves.js" onerror="nextSrc()"></script>
-<script>
-(function(){
-var D, KEY, S = {}, storeOK = true, filt = {store:'', finding:''}, skipId = null, started = false;
-var tab = 'queue', briefStore = '';
-var TABS = [['queue','Queue'],['rescue','Rescue'],['ghost','Ghost stock'],['ageing','Ageing'],['brief','Morning brief'],['details','Details']];
-var lim = {ops:40, exc:40, rou:40, rescue:40, sus:40, ns:40, age:40, bo:40, bi:40, bw:40}, routineOpen = false, editing = {}, PAGE = 40;
-var $ = function(s){return document.querySelector(s)};
-var esc = function(x){return String(x==null?'':x).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
-var rs = function(n){return 'Rs '+Number(n||0).toLocaleString('en-IN')};
-var shortDate = function(iso){ var d=new Date(iso+'T00:00:00'); return isNaN(d)?esc(iso):d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); };
-var longDate = function(iso){ var d=new Date(iso+'T00:00:00'); return isNaN(d)?esc(iso):d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'long',year:'numeric'}); };
 
+<!-- Skip-reason popup -->
+<dialog id="skipDlg">
+  <h2>Skip this move</h2>
+  <p id="skipWhat"></p>
+  <form id="skipForm">
+    <label>Reason<br>
+      <select id="skipReason" style="width:100%">
+        <option>Stock needed at the giving store</option>
+        <option>Wrong size or style for this store</option>
+        <option>Waiting for physical stock count</option>
+        <option>Too close to a festival to move</option>
+        <option>Other</option>
+      </select>
+    </label>
+    <div class="dlgbtns">
+      <button class="btn" type="button" id="skipCancel">Cancel</button>
+      <button class="btn primary" type="submit">Skip move</button>
+    </div>
+  </form>
+</dialog>
 
-/* ---- Demo access control. ONE place: scope() and deny()/can(). Client-side only, not security. ---- */
-var SESSKEY='stockmover:session', user=null, menuOpen=false, signErr='', signVal='', sessMem='', MV=[];
-var APPROVED = ['Approved','Picking','Dispatched','Received'];
-function isApproved(x){ return APPROVED.indexOf(x)>=0; }
-function getSess(){ try{ return localStorage.getItem(SESSKEY)||''; }catch(e){ return sessMem; } }
-function setSess(v){ sessMem=v; try{ if(v) localStorage.setItem(SESSKEY,v); else localStorage.removeItem(SESSKEY); }catch(e){} }
-function findUser(em){ em=String(em||'').trim().toLowerCase(); return (window.USERS||[]).filter(function(u){return u.email.toLowerCase()===em})[0]||null; }
-function roleOf(u){ return (window.ROLES||{})[u.role]||{label:u.role,can:[],tabs:['queue']}; }
-function roleCan(u,a){ return roleOf(u).can.indexOf(a)>=0; }
-function isGlobal(u){ return u.scope==='all'; }
-function scope(u,m){
-  var c=u.scope; if(c==='all') return true;
-  if(c.stores) return c.stores.indexOf(m.from)>=0 || c.stores.indexOf(m.to)>=0;
-  if(c.source) return m.from===c.source || m.to===c.source;
-  return false;
-}
-// Returns '' when allowed, otherwise the plain-English reason (used for title text).
-function deny(u,action,m){
-  if(!scope(u,m)) return 'Outside your scope';
-  var L=roleOf(u).label;
-  if(action==='decide'){
-    if(roleCan(u,'decide')) return '';
-    if(roleCan(u,'decide_scoped')){
-      var ss=u.scope.stores||[];
-      if(ss.indexOf(m.from)<0 || ss.indexOf(m.to)<0) return 'Needs merchandiser: this move leaves your stores';
-      if(m.needs_approval) return 'Needs merchandiser: over Rs 1,00,000';
-      return '';
-    }
-    return 'Read only for '+L;
-  }
-  if(action==='pick'||action==='dispatch') return roleCan(u,action) && m.from===u.scope.source ? '' : 'Only the warehouse lead handles dispatch';
-  if(action==='receive') return roleCan(u,'receive') && (u.scope.stores||[]).indexOf(m.to)>=0 ? '' : 'Only the receiving store marks received';
-  return 'Not allowed';
-}
-function can(u,action,m){ return deny(u,action,m)===''; }
-function userStoreList(u){ return u.scope==='all' ? null : (u.scope.stores || (u.scope.source?[u.scope.source]:[])); }
-function tabList(){ return roleOf(user).tabs.map(function(k){return TABS.filter(function(t){return t[0]===k})[0]}).filter(Boolean); }
-function firstName(em){ var u=findUser(em); return u? u.name.split(' ')[0] : String(em||''); }
-function initials(n){ return n.split(' ').filter(Boolean).slice(0,2).map(function(w){return w[0]}).join('').toUpperCase(); }
-function resetForUser(){
-  tab=tabList()[0][0]; filt={store:'',finding:''}; findSet=null; briefStore=''; routineOpen=false; editing={}; menuOpen=false; window.__vopen=false; resetLim();
-}
-function signIn(u){ setSess(u.email); user=u; signErr=''; signVal=''; resetForUser(); render(); }
-function signOut(){ setSess(''); user=null; menuOpen=false; render(); }
-function act(m,patch){ set(m,Object.assign({by:user.email,at:new Date().toISOString()},patch)); }
-var shortWhen = function(iso){ var d=new Date(iso); return isNaN(d)?'':d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); };
+<div id="toast" hidden></div>
 
-function gateHtml(){
-  var users = window.USERS||[], groups = {};
-  users.forEach(function(u){(groups[u.role]=groups[u.role]||[]).push(u)});
-  var h = '<div class="gate"><div class="brand">Stock Desk</div><h1>Sign in</h1><p class="muted" style="margin:0">Demo sign-in: no password, emails are made up.</p>'
-    + '<form id="signinForm" novalidate><label for="em">Work email</label><input id="em" name="email" type="email" autocomplete="off" inputmode="email" placeholder="name@manyavar.example" value="'+esc(signVal)+'"'+(signErr?' aria-invalid="true" aria-describedby="emerr"':'')+'>'
-    + '<p class="ferr" id="emerr" role="alert">'+esc(signErr)+'</p><button class="primary" type="submit">Continue</button></form>'
-    + '<h2>Demo users</h2>';
-  Object.keys(window.ROLES||{}).forEach(function(r){ (groups[r]||[]).forEach(function(u){
-    h += '<button class="ubtn" data-act="demoUser" data-email="'+esc(u.email)+'"><b style="font-weight:500">'+esc(u.name)+'</b><span>'+esc(roleOf(u).label)+(u.scope==='all'?'':' &middot; '+esc(userStoreList(u).length>2?userStoreList(u)[0]+' +'+(userStoreList(u).length-1):userStoreList(u).join(', ')))+'</span></button>'; }); });
-  return h+'<p class="foot">Client-side demo only. Anyone can read this page\'s source; real access control needs a server.</p></div>';
-}
-function menuHtml(){
-  var users = window.USERS||[], h = '<div class="menu" role="menu">';
-  Object.keys(window.ROLES||{}).forEach(function(r){
-    var g = users.filter(function(u){return u.role===r}); if(!g.length) return;
-    h += '<h3>'+esc(window.ROLES[r].label)+'</h3>'+g.map(function(u){return '<button class="mi" role="menuitem" data-act="switch" data-email="'+esc(u.email)+'"'+(u.email===user.email?' aria-current="true"':'')+'>'+esc(u.name)+'</button>'}).join('');
-  });
-  return h+'<h3>Account</h3><button class="mi" role="menuitem" data-act="signout">Sign out</button></div>';
-}
+<!-- DELETE-SEED-BUTTON HTML START -->
+<button id="seedBtn" title="Temporary: uploads demo data to Firestore">Upload demo data</button>
+<!-- DELETE-SEED-BUTTON HTML END -->
 
-window.boot = function(){
-  if(started) return; started = true;
-  if(window.__noData || !window.MOVES){ $('#app').innerHTML='<div class="err"><h2>No data found</h2><p class="muted">Run <code>python engine/run.py --date YYYY-MM-DD</code> to create <code>out/moves.js</code>, then reload.</p></div>'; return; }
-  D = window.MOVES; KEY = 'stockmover:' + D.run.date;
-  try{ S = JSON.parse(localStorage.getItem(KEY)||'{}') || {}; }catch(e){ S = {}; storeOK = false; }
-  if(!window.USERS||!window.ROLES){ $('#app').innerHTML='<div class="err"><h2>Users file missing</h2><p class="muted">config/users.js did not load.</p></div>'; return; }
-  user = findUser(getSess()); if(user) resetForUser();
-  render();
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, writeBatch, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ---------- 1. FIREBASE CONFIG: paste yours here ---------- */
+const FIREBASE_CONFIG = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
-if(window.MOVES) window.boot();
-else document.addEventListener('DOMContentLoaded', function(){ if(window.MOVES) window.boot(); });
+const configured = !FIREBASE_CONFIG.apiKey.startsWith("YOUR_");
+let app, auth, db;
+if (configured) { app = initializeApp(FIREBASE_CONFIG); auth = getAuth(app); db = getFirestore(app); }
+else document.getElementById("cfgWarn").hidden = false;
 
-function persist(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){ storeOK=false; } }
-// Routine default ticked, exceptions never. Qty default = proposed.
-function st(m){ var s=S[m.move_id]||{}; return {
-  status: s.status||'Proposed',
-  qty: clamp(s.qty!=null?s.qty:m.qty, m),
-  skip_reason: s.skip_reason||'', by: s.by||'', at: s.at||'',
-  ticked: s.ticked!=null ? !!s.ticked : (m.routine===true) }; }
-function set(m,patch){ S[m.move_id]=Object.assign({},S[m.move_id]||{},patch); persist(); }
-function clamp(q,m){ q=Math.floor(Number(q)); if(!isFinite(q)) q=m.qty; return Math.max(1,Math.min(m.qty,q)); }
+/* ---------- 2. Roles, rules ---------- */
+const ROLES = {
+  merchandiser: { label: "Merchandiser", blurb: "Approve, skip or edit the daily move list." },
+  warehouse:    { label: "Warehouse (WH-KOL)", blurb: "See the pick list of approved warehouse dispatches." },
+  area_manager: { label: "Area manager", blurb: "Read-only view of moves and data alerts for your stores." }
+};
+const TYPE_LABEL = { wh_store: "Warehouse to store", store_store: "Store to store", pull_back: "Pull-back" };
+const APPROVAL_LIMIT = 100000;   // Rs, per move line at MRP; strictly greater needs approval
+const MIN_DONOR_COVER = 30;      // days, store-to-store donor floor
 
-var findSet = null;
-function visible(m){
-  if(filt.store && m.from!==filt.store && m.to!==filt.store) return false;
-  if(filt.finding){
-    if((m.finding_ids||[]).indexOf(filt.finding)>=0) return true;
-    return !!(findSet && findSet[m.move_id]);
+/* ---------- 3. State ---------- */
+const S = { user: null, role: null, moves: [], findings: [], rules: [], calendar: [], tab: "", store: "all", unsubs: [] };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const inr = n => "Rs " + Math.round(n).toLocaleString("en-IN");
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 3500); }
+
+/* ---------- 4. Move logic: reason text and rule check come only from the move's own numbers ---------- */
+function reason(m) {
+  const e = m.evidence || {}, fest = e.festival ? `, ahead of ${e.festival}` : "";
+  if (m.type === "wh_store") {
+    const stock = e.unitLabel || m.sku;
+    const lead = `Sending ${m.qty} from ${m.from} (${e.lead}-day lead, ${e.whAvail} available)${fest}.`;
+    if (e.minDisplay && e.onHand < e.minDisplay)
+      return `${m.to} holds ${e.onHand} ${stock} against a minimum display of ${e.minDisplay}${e.vel ? `, selling ${e.vel}/day` : ", with thin sales history"}. ${lead}`;
+    return `${m.to} sells ${m.sku} at ${e.vel}/day and has ${e.onHand} on hand, which is ${(e.onHand / e.vel).toFixed(1)} days of cover. ${lead}`;
   }
-  return true;
-}
-function setFinding(id){
-  filt.finding = id; findSet = null;
-  if(id){ var f=(D.findings||[]).filter(function(x){return x.id===id})[0]; findSet={}; ((f&&f.move_ids)||[]).forEach(function(k){findSet[k]=1}); }
-  resetLim();
-}
-
-function resetLim(){ Object.keys(lim).forEach(function(k){lim[k]=PAGE}); }
-function evText(e){
-  if(e==null) return '';
-  if(typeof e==='string') return e;
-  var one=function(o){return typeof o==='object'&&o ? Object.keys(o).map(function(k){return k.replace(/_/g,' ')+' '+o[k]}).join(', ') : String(o)};
-  if(Array.isArray(e)) return e.slice(0,2).map(one).join(' | ')+(e.length>2?' (+'+(e.length-2)+' more)':'');
-  return one(e);
-}
-
-function more(n,key,total){ return total>n ? '<div class="more"><button class="tb" data-act="more" data-g="'+key+'">Show '+Math.min(PAGE,total-n)+' more ('+(total-n)+' left)</button></div>' : ''; }
-function storeFilter(stores){
-  return '<div class="filters"><label>Store <select id="storeSel"><option value="">All stores</option>'+stores.map(function(x){return '<option'+(filt.store===x?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select></label>'
-    + (filt.finding?'<button class="tb" data-act="clearFind">Showing '+esc(filt.finding)+' only. Clear</button>':'')+'</div>';
-}
-function render(){
-  if(!user){ $('#app').innerHTML = gateHtml(); return; }
-  var v = D.validator, moves = D.moves.filter(function(m){return scope(user,m)}); MV = moves;
-  var vis = moves.filter(visible);
-  var exc = vis.filter(function(m){return !m.routine}), rou = vis.filter(function(m){return m.routine});
-  var nApproved = moves.filter(function(m){return isApproved(st(m).status)}).length;
-  var storeSet = {}; moves.forEach(function(m){storeSet[m.from]=1;storeSet[m.to]=1});
-  var stores = Object.keys(storeSet).sort();
-  var ul = userStoreList(user), bstores = ul||stores;
-  var glob = isGlobal(user), decider = roleCan(user,'decide')||roleCan(user,'decide_scoped');
-  var nExc = moves.filter(function(m){return !m.routine}).length, nRou = moves.length-nExc;
-  var units = moves.reduce(function(t,m){return t+m.qty},0), value = moves.reduce(function(t,m){return t+m.value_mrp},0);
-  var pendingExc = moves.filter(function(m){return !m.routine && st(m).status==='Proposed'}).length;
-  var pendingAll = moves.filter(function(m){return st(m).status==='Proposed'}).length;
-  var tl = tabList(); if(!tl.some(function(t){return t[0]===tab})) tab = tl[0][0];
-  var h = '<header><span class="brand">Stock Desk</span><div class="who"><button class="whobtn" data-act="menu" aria-expanded="'+menuOpen+'" aria-haspopup="true" aria-label="Account menu for '+esc(user.name)+', '+esc(roleOf(user).label)+'"><span class="av" aria-hidden="true">'+esc(initials(user.name))+'</span><span class="wn"><b style="font-weight:500">'+esc(user.name)+'</b><span>'+esc(roleOf(user).label)+'</span></span></button>'+(menuOpen?menuHtml():'')+'</div></header>';
-  h += '<section class="summary"><p class="muted" style="font-size:13px;margin:0 0 8px">'+longDate(D.run.date)+'</p><h1>'
-    + (decider ? esc(pendingExc)+' of '+esc(nExc)+' exceptions need '+(glob?'you':'a decision')+'. The other '+esc(nRou)+' are routine.' : esc(moves.length.toLocaleString('en-IN'))+' moves in your view, '+esc(pendingAll.toLocaleString('en-IN'))+' awaiting approval.')+'</h1>'
-    + '<div class="nums"><div class="hl"><b>'+esc(moves.length.toLocaleString('en-IN'))+'</b>moves</div><div><b>'+esc(units.toLocaleString('en-IN'))+'</b>units</div><div><b>'+rs(value)+'</b>at MRP</div></div>'
-    + '<p class="muted" style="font-size:13px;margin:14px 0 0">'+nApproved+' approved so far.'+(storeOK?'':' Browser storage is unavailable: decisions last until you close this page. Export approvals.json to keep them.')+'</p></section>';
-  if(glob) h += validatorHtml(v, moves.length);
-  else { var vok = v && v.violations===0; h += '<div class="val"><span class="dot '+(vok?'':(v&&v.violations!=null?'bad':'na'))+'" aria-hidden="true"></span>'+(vok?'Independent rule check passed':(v&&v.violations!=null?'Rule check found violations. Ask the merchandiser.':'Rule check did not run. Ask the merchandiser.'))+'</div>'; }
-  var rescue = vis.filter(function(m){return m.type!=='PULL_BACK'}), age = vis.filter(function(m){return m.type==='PULL_BACK'});
-  var cnt = {queue:exc.length+rou.length, rescue:rescue.length, ghost:glob?(D.not_slow||[]).length:null, ageing:age.length};
-  h += '<div class="tabs" role="tablist" aria-label="Sections">'+tl.map(function(t){return '<button role="tab" id="tab-'+t[0]+'" aria-selected="'+(tab===t[0])+'" aria-controls="panel" tabindex="'+(tab===t[0]?0:-1)+'" data-act="tab" data-t="'+t[0]+'">'+t[1]+(cnt[t[0]]!=null?' ('+cnt[t[0]].toLocaleString('en-IN')+')':'')+'</button>'}).join('')+'</div>';
-  h += '<div id="panel" role="tabpanel" aria-labelledby="tab-'+tab+'">';
-  var bar = '';
-  if(tab==='queue'){
-    var opsRole = user.role==='warehouse'||user.role==='store_manager';
-    var ops = [];
-    if(opsRole){
-      ops = vis.filter(function(m){ return isApproved(st(m).status) && (user.role==='warehouse' ? m.from===user.scope.source : user.scope.stores.indexOf(m.to)>=0); });
-      var inOps = {}; ops.forEach(function(m){inOps[m.move_id]=1});
-      exc = exc.filter(function(m){return !inOps[m.move_id]}); rou = rou.filter(function(m){return !inOps[m.move_id]});
-      var rk = user.role==='warehouse' ? {Picking:0,Approved:1,Dispatched:2,Received:3} : {Dispatched:0,Picking:1,Approved:2,Received:3}; ops.sort(function(a,b){return rk[st(a).status]-rk[st(b).status]||a.to.localeCompare(b.to)});
-    }
-    h += storeFilter(stores);
-    if(opsRole) h += '<section class="sec"><div class="sech"><h2>'+(user.role==='warehouse'?'Approved, ready to pick':'Approved, on the way to you')+' ('+ops.length+')</h2></div>'
-      + (ops.length? ops.slice(0,lim.ops).map(rowHtml).join('') : '<p class="empty">Nothing approved yet. Approved moves appear here.</p>') + more(lim.ops,'ops',ops.length)+'</section>';
-    h += '<section class="sec"><div class="sech"><h2>'+(decider?'Needs your decision':'Awaiting approval')+' ('+exc.length+')</h2></div><p class="lead">Each item below is a stock move. Approve sends it to the warehouse / store teams; Skip removes it for today.</p>'
-      + (exc.length? exc.slice(0,lim.exc).map(rowHtml).join('') : '<p class="empty">Nothing here.</p>') + more(lim.exc,'exc',exc.length)+'</section>';
-    var okR = rou.filter(function(m){return can(user,'decide',m)});
-    var pend = okR.filter(function(m){var s=st(m);return s.status==='Proposed'&&s.ticked}).length;
-    var done = okR.filter(function(m){return st(m).status==='Approved'}).length;
-    h += '<section class="sec"><div class="sech"><h2>Routine ('+rou.length+')</h2><button class="tb" data-act="toggleRoutine" aria-expanded="'+routineOpen+'">'+(routineOpen?'Hide list':'Review list')+'</button></div><p class="lead">Routine moves: low value, within all rules, no warnings.</p>';
-    if(routineOpen) h += (rou.length? rou.slice(0,lim.rou).map(rowHtml).join('') : '<p class="empty">Nothing here.</p>') + more(lim.rou,'rou',rou.length);
-    h += '</section>';
-    if(!tl.some(function(t){return t[0]==='details'}) && exportsHtml()) h += '<section class="sec"><div class="sech"><h2>Export</h2></div>'+exportsHtml()+'</section>';
-    if(decider) bar = '<div class="sticky"><div>'+(pend||!done?'<button class="primary" data-act="approveRoutine"'+(pend?'':' disabled')+(pend?'':' title="No routine moves left that you may approve"')+'>Approve all routine ('+pend+')</button>':'<span class="st Approved">'+done+' routine approved</span>')
-      + (done?'<button class="tb" data-act="reopenRoutine">Undo / reopen ('+done+')</button>':'')+'</div></div>';
-  } else if(tab==='rescue'){
-    // Urgency = lowest cover before the move (evidence), then nearest event. Contract has no explicit urgency field.
-    var u = function(m){var e=m.evidence||{};return e.to_cover_before==null?9999:e.to_cover_before};
-    rescue = rescue.slice().sort(function(a,b){return u(a)-u(b)||((a.evidence&&a.evidence.event?a.evidence.event.days_away:999)-(b.evidence&&b.evidence.event?b.evidence.event.days_away:999))||b.value_mrp-a.value_mrp});
-    h += storeFilter(stores)+'<p class="lead">Stores about to run out, lowest cover first. Warehouse and store-to-store moves.</p>'
-      + (rescue.length? rescue.slice(0,lim.rescue).map(rowHtml).join('') : '<p class="empty">Nothing here.</p>') + more(lim.rescue,'rescue',rescue.length);
-  } else if(tab==='ghost'){
-    var ns = D.not_slow||[], de = (D.findings||[]).filter(function(x){return x.kind==='DATA_ERROR'}), sus = (D.blocked||[]).filter(function(x){return x.rule==='DATA_SUSPECT'});
-    h += '<p class="lead">Stock that looks wrong or slow but is not. Recount these before anyone moves them.</p>';
-    h += '<section class="sec"><div class="sech"><h2>Recount this ('+de.length+' findings, '+sus.length+' rows held)</h2></div>'
-      + de.map(function(x){return '<div class="find"><b>'+esc(x.title)+'</b>'+(x.value_rs?' <span class="muted">&middot; '+rs(x.value_rs)+' at MRP</span>':'')+'<p>'+esc(evText(x.evidence))+'</p>'+(x.action?'<p>'+esc(x.action)+'</p>':'')+'</div>'}).join('')
-      + sus.slice(0,lim.sus).map(function(x){return '<div class="line"><b>Recount '+esc(x.from)+' '+esc(x.sku_id)+'</b><span class="sub">'+esc(x.detail)+'</span></div>'}).join('')+more(lim.sus,'sus',sus.length)
-      + (de.length||sus.length?'':'<p class="empty">Nothing to recount.</p>')+'</section>';
-    h += '<section class="sec"><div class="sech"><h2>Looks slow, is not ('+ns.length.toLocaleString('en-IN')+')</h2></div>'
-      + ns.slice(0,lim.ns).map(function(x){return '<div class="line"><b>'+esc(x.store_id)+' '+esc(x.sku_id)+'</b> <span class="muted">&middot; '+esc(x.on_hand)+' on hand, '+esc(x.in_stock_days_28)+' in-stock days</span><span class="sub">'+esc(x.note)+'</span></div>'}).join('')
-      + (ns.length?'':'<p class="empty">Nothing here.</p>')+more(lim.ns,'ns',ns.length)+'</section>';
-  } else if(tab==='ageing'){
-    var g = {}; age.forEach(function(m){var k=m.from;(g[k]=g[k]||{store:k,units:0,val:0,list:[]});g[k].units+=m.qty;g[k].val+=m.value_mrp;g[k].list.push(m)});
-    var groups = Object.keys(g).map(function(k){return g[k]}).sort(function(a,b){return b.val-a.val});
-    var total = age.reduce(function(t,m){return t+m.value_mrp},0), flat = [];
-    groups.forEach(function(x){x.list.sort(function(a,b){return b.value_mrp-a.value_mrp}); flat.push({head:x}); x.list.forEach(function(m){flat.push({m:m})})});
-    h += storeFilter(stores)+'<p class="lead">Ageing stock to bring back to the warehouse: '+rs(total)+' tied up across '+groups.length+' stores.</p>';
-    var shown = 0, out = '';
-    flat.forEach(function(it){ if(it.head){ if(shown<lim.age) out += '<div class="gh"><div>'+esc(it.head.store)+'</div><span>'+it.head.units+' units &middot; '+rs(it.head.val)+' tied up</span></div>'; } else if(shown<lim.age){ out += rowHtml(it.m); shown++; } });
-    h += (age.length? out : '<p class="empty">Nothing here.</p>') + more(lim.age,'age',age.length);
-  } else if(tab==='brief'){
-    if(!briefStore || bstores.indexOf(briefStore)<0) briefStore = bstores.filter(function(x){return x!=='WH-KOL'})[0]||bstores[0]||'';
-    var bs = briefStore, sendOut = moves.filter(function(m){return m.from===bs}), exp = moves.filter(function(m){return m.to===bs});
-    var watchM = moves.filter(function(m){return (m.from===bs||m.to===bs) && ((m.warnings||[]).length||m.needs_approval)});
-    var rel = !glob ? [] : (D.findings||[]).filter(function(x){return (x.move_ids||[]).some(function(id){var m=byId(id);return m&&(m.from===bs||m.to===bs)}) || evText(x.evidence).indexOf(bs)>=0});
-    h += '<div class="filters"><label>Store <select id="briefSel">'+bstores.map(function(x){return '<option'+(bs===x?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select></label></div>';
-    var ln = function(m,who){var q=st(m).qty;return '<div class="line"><span class="actl" style="font-size:15px">'+esc(actionText(m,q))+'</span><span class="sub">'+subLine(m,q)+' &middot; '+st(m).status.toLowerCase()+'</span><span class="sub" style="color:var(--text)">'+esc(m.reason)+'</span></div>'};
-    h += '<h3 class="bh">Send out ('+sendOut.length+')</h3>'+(sendOut.slice(0,lim.bo).map(function(m){return ln(m,'to '+m.to)}).join('')||'<p class="empty">Nothing leaving this store.</p>')+more(lim.bo,'bo',sendOut.length);
-    h += '<h3 class="bh">Expect in ('+exp.length+')</h3>'+(exp.slice(0,lim.bi).map(function(m){return ln(m,'from '+m.from)}).join('')||'<p class="empty">Nothing arriving.</p>')+more(lim.bi,'bi',exp.length);
-    h += '<h3 class="bh">Watch ('+(watchM.length+rel.length)+')</h3>'+rel.map(function(x){return '<div class="line"><b>'+esc(x.title)+'</b><span class="sub">'+esc(evText(x.evidence))+'</span></div>'}).join('')
-      + watchM.slice(0,lim.bw).map(function(m){return '<div class="line">'+esc(m.from)+' &rarr; '+esc(m.to)+' &middot; '+esc(m.style_name)+' '+esc(m.size)+'<span class="sub">'+(m.warnings||[]).map(function(x){return esc(x.replace(/_/g,' ').toLowerCase())}).concat(m.needs_approval?['over Rs 1,00,000']:[]).join(', ')+'</span></div>'}).join('')
-      + (watchM.length+rel.length?'':'<p class="empty">Nothing to watch.</p>')+more(lim.bw,'bw',watchM.length);
-  } else {
-    h += findingsHtml();
-    h += '<section class="sec"><div class="sech"><h2>Details</h2></div>'+blockedHtml()+auditHtml()
-      + '<details id="assume"><summary>Assumptions and ambiguities</summary>'+((D.assumptions||[]).length?'<ul class="as">'+D.assumptions.map(function(a){return '<li>'+esc(a)+'</li>'}).join('')+'</ul>':'<p class="note">None recorded.</p>')+'</details>'
-      + '<details id="exports" open><summary>Exports</summary>'+exportsHtml()+'</details></section>';
+  if (m.type === "store_store") {
+    const after = (e.srcOnHand - m.qty) / e.srcVel;
+    return `${m.to} sells ${m.sku} at ${e.dstVel}/day with ${e.dstOnHand} on hand (${(e.dstOnHand / e.dstVel).toFixed(1)} days); ${m.from} sells ${e.srcVel}/day and still keeps ${after.toFixed(0)} days of cover after giving ${m.qty}.`;
   }
-  h += '</div><p class="foot">Client-side demo only. Anyone can read this page\'s source; real access control needs a server.</p>'+bar;
-  var open = {}; document.querySelectorAll('details[id]').forEach(function(d){open[d.id]=d.open});
-  var fid = document.activeElement && document.activeElement.id;
-  $('#app').innerHTML = h;
-  Object.keys(open).forEach(function(k){var d=document.getElementById(k); if(d) d.open=open[k]});
-  if(fid){ var e=document.getElementById(fid); if(e) e.focus(); }
+  return `${m.qty} of ${m.sku} at ${m.from} are ${e.ageDays} days old with ${e.sold28} sales across ${e.inStock28} in-stock days in the last 28: genuinely slow, so pull back to ${m.to} (${e.lead}-day lead).`;
 }
-
-function validatorHtml(v, n){
-  var na = v==null || v.violations==null, bad = !na && v.violations>0;
-  var text = na ? 'Validator did not run. These moves are unchecked: do not approve until it runs.'
-    : bad ? v.violations+' rule violation'+(v.violations===1?'':'s')+' found. Review before approving.'
-    : (v.badge || ('0 of '+(v.checked!=null?v.checked:n)+' moves break 8 rules'));
-  var h = '<div class="val"><button data-act="vtoggle" aria-expanded="'+(!!window.__vopen)+'" aria-controls="vdetail"><span class="dot '+(na?'na':bad?'bad':'')+'" aria-hidden="true"></span>'+esc(text)+' <span class="muted">'+(window.__vopen?'Hide':'Details')+'</span></button>';
-  h += '<div id="vdetail" class="vd"'+(window.__vopen?'':' hidden')+'>';
-  if(!na){
-    var cnt = {}; (v.details||[]).forEach(function(d){cnt[d.rule]=(cnt[d.rule]||0)+1});
-    var names = {R1:'Min display',R2:'Capacity',R3:'Flagship',R4:'In transit',R5:'Donor cover',R6:'Approval',R7:'Lead time',R8:'Conservation'};
-    h += (v.rules||[]).map(function(r){return '<span style="color:'+(cnt[r]?'var(--bad)':'var(--ok)')+'">'+(cnt[r]?'&#10007; ':'&#10003; ')+esc(r)+' '+esc(names[r]||'')+(cnt[r]?' ('+cnt[r]+')':'')+'</span>'}).join('');
-    if((v.details||[]).length) h += '<table>'+v.details.slice(0,50).map(function(d){return '<tr><td>'+esc(d.move_id)+'</td><td>'+esc(d.rule)+'</td><td>'+esc(d.detail)+'</td></tr>'}).join('')+'</table>';
+function available(m) {
+  const e = m.evidence || {};
+  return m.type === "wh_store" ? e.whAvail : m.type === "store_store" ? e.srcOnHand : e.onHand;
+}
+function check(m) {
+  const e = m.evidence || {}, v = [];
+  if (m.type === "store_store" && e.srcVel) {
+    const after = (e.srcOnHand - m.qty) / e.srcVel;
+    if (after < MIN_DONOR_COVER) v.push(`giving store left with ${after.toFixed(0)} days cover (minimum ${MIN_DONOR_COVER})`);
   }
-  return h+'<p style="margin:6px 0 0">How checked: a separate program that never imports the engine re-reads the raw CSVs and re-tests the whole list in combination.</p></div></div>';
+  if (m.type !== "pull_back" && e.cap && e.dstUnits + m.qty > e.cap) v.push(`over capacity (${e.dstUnits + m.qty} of ${e.cap})`);
+  if (m.type === "pull_back" && e.inStock28 < 14) v.push("zero sales with few in-stock days is unavailable, not slow");
+  if (available(m) != null && m.qty > available(m)) v.push(`quantity exceeds the ${available(m)} available`);
+  const value = m.qty * m.mrp;
+  return { violations: v, value, needsApproval: value > APPROVAL_LIMIT || !!m.exception };
 }
 
-function findingsHtml(){
-  var f = D.findings||[]; if(!f.length) return '';
-  var lbl = {REAL_PROBLEM:'Real problem',DATA_ERROR:'Data error',CONTEXT:'Context'};
-  return '<section class="sec"><div class="sech"><h2>What the data is telling us</h2></div>'+f.map(function(x){
-    var n=(x.move_ids||[]).length;
-    return '<div class="find"><span class="kind">'+esc(lbl[x.kind]||x.kind)+'</span><div><b>'+esc(x.title)+'</b>'+(x.value_rs?' <span class="muted">&middot; '+rs(x.value_rs)+'</span>':'')+'</div><p>'+esc(evText(x.evidence))+'</p>'
-      +(x.action?'<p>'+esc(x.action)+'</p>':'')
-      +(n?'<button class="tb" data-act="findMoves" data-id="'+esc(x.id)+'" aria-pressed="'+(filt.finding===x.id)+'">See '+n+' move'+(n===1?'':'s')+'</button>':'')+'</div>';
-  }).join('')+'</section>';
-}
+/* ---------- 5. Auth + role gate ---------- */
+$("googleBtn").onclick = async () => {
+  if (!configured) return toast("Add your Firebase config first.");
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch (err) { toast(err.code === "auth/popup-closed-by-user" ? "Sign-in cancelled." : "Sign-in failed: " + (err.code || err.message)); }
+};
+$("signOut").onclick = () => signOut(auth);
 
-function WHN(x){return x==='WH-KOL'?'the warehouse':x}
-function actionText(m,q){
-  var item = q+' x '+m.style_name+' ('+m.size+')';
-  if(m.type==='PULL_BACK') return 'Bring '+item+' back from '+WHN(m.from)+' to '+WHN(m.to);
-  if(m.type==='WH_TO_STORE') return 'Send '+item+' from '+WHN(m.from)+' to '+WHN(m.to);
-  return 'Move '+item+' from '+WHN(m.from)+' to '+WHN(m.to);
-}
-function becauseText(m){
-  var BECAUSE_ = {THIN_DATA:'there is little sales history, so the demand estimate is shaky', CROSS_ZONE:'it ships across zones, which takes 7 days', BELOW_MIN_DISPLAY_RECEIVER:'the receiving store is below its minimum display'};
-  var r = [];
-  if(m.needs_approval) r.push('the move is worth over Rs 1,00,000');
-  (m.warnings||[]).forEach(function(w){ r.push(w==='NEW_STORE' ? (m.type==='PULL_BACK'?m.from:m.to)+' is a new store with almost no history' : (BECAUSE_[w]||String(w).toLowerCase().replace(/_/g,' '))); });
-  return r.length ? r.join('; ') : 'it is flagged for review';
-}
-function subLine(m,q){
-  return 'Arrives '+shortDate(m.arrives_on)+' (in '+esc(m.lead_days)+' days) &middot; '+rs(q*m.mrp)+' at MRP &middot; SKU '+esc(m.sku_id)+(q!==m.qty?' &middot; proposed '+m.qty:'');
-}
-function exportsHtml(){
-  var b = [];
-  if(roleCan(user,'export_csv')) b.push('<button class="primary" data-act="csv">Export approved CSV</button>');
-  if(roleCan(user,'export_pick')) b.push('<button class="tb" data-act="pick">Pick list CSV</button>');
-  if(roleCan(user,'export_json')) b.push('<button class="tb" data-act="json">Approvals JSON</button>');
-  return b.length ? '<div class="acts" style="padding:4px 0 14px">'+b.join('')+'</div>' : '';
-}
-function rowHtml(m){
-  var s = st(m), w = m.warnings||[], id = esc(m.move_id), locked = s.status!=='Proposed';
-  var why = deny(user,'decide',m), canD = why==='';
-  var h = '<article class="row '+s.status+'" data-id="'+id+'"><div class="rt">'
-    + (m.routine&&canD?'<input type="checkbox" data-act="tick" data-id="'+id+'"'+(s.ticked?' checked':'')+(locked?' disabled':'')+' aria-label="Select for bulk approval: '+esc(actionText(m,s.qty))+'">':'')
-    + '<div><div class="actl">'+esc(actionText(m,s.qty))+'</div><div class="sub">'+subLine(m,s.qty)+'</div><div class="why">'+esc(m.reason)+'</div>'
-    + (m.routine?'':'<div class="because"><b>'+(roleCan(user,'decide')||roleCan(user,'decide_scoped')?'Needs your decision because:':'Needs a decision because:')+'</b> '+esc(becauseText(m))+'</div>')+'</div></div>';
-  var a = '';
-  if(locked){
-    a += '<span class="st '+s.status+'">'+esc(s.status)+(s.skip_reason?': '+esc(s.skip_reason):'')+'</span>'+(s.by?'<span class="sub">by '+esc(firstName(s.by))+' on '+shortWhen(s.at)+'</span>':'');
-    if(canD && (s.status==='Approved'||s.status==='Skipped')) a += '<button class="tb" data-act="undo" data-id="'+id+'">Undo</button>';
-    if(s.status==='Approved' && can(user,'pick',m)) a += '<button class="tb" data-act="setStatus" data-to="Picking" data-id="'+id+'">Mark picking</button>';
-    if(s.status==='Picking' && can(user,'dispatch',m)) a += '<button class="tb" data-act="setStatus" data-to="Dispatched" data-id="'+id+'">Mark dispatched</button>';
-    if(isApproved(s.status) && s.status!=='Received' && can(user,'receive',m)) a += '<button class="tb" data-act="setStatus" data-to="Received" data-id="'+id+'">Mark received</button>';
-  } else if(canD){
-    a += '<button class="tb" data-act="approve" data-id="'+id+'">Approve</button><button class="tb mute" data-act="skip" data-id="'+id+'">Skip</button><button class="tb mute" data-act="editq" data-id="'+id+'" aria-expanded="'+!!editing[m.move_id]+'">Edit qty</button>';
-  } else {
-    a += '<span class="rq" tabindex="0" title="'+esc(why)+'" aria-label="'+esc(why)+'">'+(roleCan(user,'decide_scoped')?'Needs merchandiser':'Read only')+'</span>';
-  }
-  h += '<div class="acts">'+a+'</div>';
-  if(!locked && canD && editing[m.move_id]) h += '<label class="qedit">Quantity (1 to '+m.qty+') <input type="number" min="1" max="'+m.qty+'" step="1" value="'+s.qty+'" data-act="qty" data-id="'+id+'"></label>';
-  return h+'</article>';
-}
-
-function blockedHtml(){
-  var b = D.blocked||[]; var by = {}; b.forEach(function(x){(by[x.rule]=by[x.rule]||[]).push(x)});
-  if(!b.length) return '<p class="note">Nothing blocked.</p>';
-  return '<details id="blocked"><summary>Considered but blocked ('+b.length.toLocaleString('en-IN')+')</summary>'+Object.keys(by).map(function(r){
-    return '<details id="bl-'+esc(r)+'"><summary>'+esc(r.replace(/_/g,' ').toLowerCase())+' ('+by[r].length.toLocaleString('en-IN')+')</summary>'+by[r].slice(0,50).map(function(x){
-      return '<div class="brow">'+esc(x.from)+' &rarr; '+esc(x.to)+' &middot; '+esc(x.sku_id)+' &middot; wanted '+esc(x.qty_wanted)+'<br><span class="muted">'+esc(x.detail)+'</span></div>'}).join('')
-      +(by[r].length>50?'<div class="brow muted">and '+(by[r].length-50).toLocaleString('en-IN')+' more (full list in out/moves.json)</div>':'')+'</details>';
-  }).join('')+'</details>';
-}
-function notSlowHtml(){
-  var n = D.not_slow||[]; if(!n.length) return '';
-  return '<details id="notslow"><summary>Would have been flagged slow, correctly not touched ('+n.length+')</summary>'+n.slice(0,50).map(function(x){return '<div class="brow">'+esc(x.store_id)+' '+esc(x.sku_id)+': '+esc(x.note)+'</div>'}).join('')+(n.length>50?'<div class="brow muted">and '+(n.length-50)+' more</div>':'')+'</details>';
-}
-function auditHtml(){
-  var a = D.self_audit||[]; if(!a.length) return '';
-  return '<details id="audit"><summary>Self-audit ('+a.length+' checks)</summary><table>'+a.map(function(x){return '<tr><td>'+esc(x.label)+'</td><td><b>'+esc(x.value)+'</b></td><td class="muted">'+esc(x.formula)+'</td></tr>'}).join('')+'</table></details>';
-}
-
-function byId(id){ return (D.moves||[]).filter(function(m){return m.move_id===id})[0]; }
-
-document.addEventListener('click', function(e){
-  if(menuOpen && !e.target.closest('.who')){ menuOpen=false; render(); }
-  var t = e.target.closest('[data-act]'); if(!t || !D) return;
-  var a = t.dataset.act, m = t.dataset.id && byId(t.dataset.id);
-  if(a==='demoUser'){ var du=findUser(t.dataset.email); if(du) signIn(du); return; }
-  if(!user) return;
-  if(a==='menu'){ menuOpen=!menuOpen; render(); return; }
-  if(a==='switch'){ var su=findUser(t.dataset.email); if(su) signIn(su); return; }
-  if(a==='signout'){ signOut(); return; }
-  if(a==='tick' || a==='qty') return;
-  if(m && ['approve','undo','editq','skip'].indexOf(a)>=0 && !can(user,'decide',m)) return;
-  if(a==='tab'){ tab=t.dataset.t; render(); var tb=document.getElementById('tab-'+tab); if(tb) tb.focus(); return; }
-  if(a==='reopenRoutine'){ MV.forEach(function(x){ if(x.routine && visible(x) && can(user,'decide',x) && st(x).status==='Approved') act(x,{status:'Proposed',by:'',at:''}); }); render(); return; }
-  if(a==='vtoggle'){ window.__vopen=!window.__vopen; render(); }
-  else if(a==='toggleRoutine'){ routineOpen=!routineOpen; render(); }
-  else if(a==='more'){ lim[t.dataset.g]+=PAGE; render(); }
-  else if(a==='findMoves'){ setFinding(filt.finding===t.dataset.id ? '' : t.dataset.id); render(); }
-  else if(a==='clearFind'){ setFinding(''); render(); }
-  else if(a==='approve'){ act(m,{status:'Approved',ticked:true}); render(); }
-  else if(a==='undo'){ if(st(m).status==='Approved'||st(m).status==='Skipped'){ act(m,{status:'Proposed',skip_reason:'',by:'',at:''}); render(); } }
-  else if(a==='setStatus'){ var to=t.dataset.to, cur=st(m).status, okS = (to==='Picking'&&cur==='Approved'&&can(user,'pick',m)) || (to==='Dispatched'&&cur==='Picking'&&can(user,'dispatch',m)) || (to==='Received'&&isApproved(cur)&&cur!=='Received'&&can(user,'receive',m)); if(okS){ act(m,{status:to}); render(); } }
-  else if(a==='editq'){ editing[m.move_id]=!editing[m.move_id]; render(); }
-  else if(a==='skip'){ skipId=m.move_id; $('#skipWhat').textContent=m.from+' to '+m.to+', '+m.style_name+' '+m.size+', qty '+st(m).qty; $('#skipDlg').showModal(); $('#skipReason').focus(); }
-  else if(a==='approveRoutine'){
-    MV.forEach(function(x){ if(x.routine && visible(x) && can(user,'decide',x)){ var s=st(x); if(s.status==='Proposed' && s.ticked) act(x,{status:'Approved'}); } });
-    render();
-  }
-  else if(a==='csv' && roleCan(user,'export_csv')) exportCsv(false);
-  else if(a==='pick' && roleCan(user,'export_pick')) exportCsv(true);
-  else if(a==='json' && roleCan(user,'export_json')) exportJson();
-});
-document.addEventListener('change', function(e){
-  var t = e.target; if(t.id==='briefSel'){ briefStore=t.value; lim.bo=lim.bi=lim.bw=PAGE; render(); return; }
-  if(t.id==='storeSel'){ filt.store=t.value; resetLim(); render(); return; }
-  var m = t.dataset && t.dataset.id && byId(t.dataset.id); if(!m || !user || !can(user,'decide',m)) return;
-  if(t.dataset.act==='tick'){ set(m,{ticked:t.checked}); render(); }
-  if(t.dataset.act==='qty'){ act(m,{qty:clamp(t.value,m)}); render(); }
-});
-document.addEventListener('keydown', function(e){
-  if(e.key==='Escape' && menuOpen){ menuOpen=false; render(); var wb=document.querySelector('.whobtn'); if(wb) wb.focus(); return; }
-  if(!user) return;
-  var t = e.target; if(!t.matches || !t.matches('[role=tab]') || (e.key!=='ArrowRight'&&e.key!=='ArrowLeft')) return;
-  var T=tabList(); var i = T.map(function(x){return x[0]}).indexOf(tab); i = (i+(e.key==='ArrowRight'?1:T.length-1))%T.length; tab=T[i][0]; render(); document.getElementById('tab-'+tab).focus();
-});
-document.addEventListener('submit', function(e){
-  if(e.target.id!=='signinForm') return; e.preventDefault();
-  var val = e.target.email.value; signVal = val;
-  if(!/^\S+@\S+\.\S+$/.test(val.trim())){ signErr='Enter a valid email address'; render(); var i1=$('#em'); if(i1) i1.focus(); return; }
-  var u = findUser(val);
-  if(!u){ signErr='No account for that email'; render(); var i2=$('#em'); if(i2) i2.focus(); return; }
-  signIn(u);
-});
-$('#skipForm').addEventListener('submit', function(e){
-  var ok = e.submitter && e.submitter.value==='ok', m = byId(skipId);
-  if(ok && m && user && can(user,'decide',m)){ act(m,{status:'Skipped',skip_reason:$('#skipReason').value,ticked:false}); }
-  skipId=null; setTimeout(render,0);
+if (configured) onAuthStateChanged(auth, async user => {
+  stopListening();
+  S.user = user; S.role = null;
+  if (!user) return showLogin();
+  try {
+    const snap = await getDoc(doc(db, "users", user.uid));     // read the role field from the backend
+    const role = snap.exists() ? snap.data().role : null;
+    if (ROLES[role]) { S.role = role; startApp(); }
+    else askRole();                                             // first login
+  } catch (err) { toast("Could not read your profile: " + (err.code || err.message)); showLogin(); }
 });
 
-function csvCell(x){ x=String(x==null?'':x); if(/^[=+\-@\t\r]/.test(x)) x="'"+x; return /[",\n\r]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; }
-function download(name, text, type){
-  var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:type})); a.download=name;
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(a.href)},1000);
+function askRole() {
+  $("roleOpts").innerHTML = Object.entries(ROLES).map(([k, r], i) =>
+    `<label class="roleopt"><input type="radio" name="role" value="${k}" ${i === 0 ? "checked" : ""}><b>${esc(r.label)}</b><span>${esc(r.blurb)}</span></label>`).join("");
+  $("roleDlg").showModal();
 }
-function approved(){ return MV.filter(function(m){return isApproved(st(m).status)}); }
-function exportCsv(pick){
-  var ms = approved(), head, rows;
-  if(pick){
-    ms = ms.filter(function(m){return m.type==='WH_TO_STORE'}).sort(function(a,b){return a.to.localeCompare(b.to)||a.sku_id.localeCompare(b.sku_id)});
-    head = ['to','sku_id','style_name','size','qty','dispatch_on']; rows = ms.map(function(m){return [m.to,m.sku_id,m.style_name,m.size,st(m).qty,m.dispatch_on]});
-  } else {
-    head = ['move_id','type','from','to','sku_id','style_name','size','qty','mrp','value_mrp','dispatch_on','arrives_on','reason'];
-    rows = ms.map(function(m){var q=st(m).qty;return [m.move_id,m.type,m.from,m.to,m.sku_id,m.style_name,m.size,q,m.mrp,q*m.mrp,m.dispatch_on,m.arrives_on,m.reason]});
+$("roleDlg").addEventListener("cancel", e => e.preventDefault());   // must pick a role
+$("roleForm").onsubmit = async e => {
+  e.preventDefault();
+  const role = new FormData($("roleForm")).get("role");
+  try {
+    await setDoc(doc(db, "users", S.user.uid), {
+      uid: S.user.uid, name: S.user.displayName || "", email: S.user.email || "",
+      photo: S.user.photoURL || "", role, createdAt: serverTimestamp()
+    });
+    S.role = role; $("roleDlg").close(); startApp();
+  } catch (err) { toast("Could not save your role: " + (err.code || err.message)); }
+};
+
+function showLogin() { $("loginView").hidden = false; $("appView").hidden = true; $("who").hidden = true; }
+
+/* ---------- 6. Live data ---------- */
+function startApp() {
+  $("loginView").hidden = true; $("appView").hidden = false; $("who").hidden = false;
+  $("avatar").src = S.user.photoURL || ""; $("uname").textContent = S.user.displayName || S.user.email;
+  $("rolechip").textContent = ROLES[S.role].label;
+  S.tab = S.role === "warehouse" ? "pick" : "moves";
+  const listen = (name, key) => S.unsubs.push(onSnapshot(collection(db, name),
+    snap => { S[key] = snap.docs.map(d => ({ id: d.id, ...d.data() })); render(); },
+    err => toast(`Could not load ${name}: ${err.code || err.message}`)));
+  listen("moves", "moves"); listen("findings", "findings"); listen("rules", "rules"); listen("calendar", "calendar");
+  render();
+}
+function stopListening() { S.unsubs.forEach(u => u()); S.unsubs = []; S.moves = S.findings = S.rules = S.calendar = []; }
+
+/* ---------- 7. Render ---------- */
+function tabsForRole() {
+  if (S.role === "warehouse") return [["pick", "Pick list"], ["returns", "Incoming pull-backs"], ["rules", "Rules and calendar"]];
+  if (S.role === "area_manager") return [["moves", "Moves"], ["findings", "Data alerts"], ["rules", "Rules and calendar"]];
+  return [["moves", "Moves to approve"], ["findings", "Hidden problems found"], ["rules", "Rules and calendar"]];
+}
+function render() {
+  if (!S.role) return;
+  const sorted = S.moves;
+  const by = s => sorted.filter(m => m.status === s);
+  const val = arr => arr.reduce((a, m) => a + m.qty * m.mrp, 0);
+  $("stats").innerHTML = [
+    [sorted.length, "moves proposed today"], [by("approved").length, "approved"], [by("skipped").length, "skipped"],
+    [inr(val(by("approved"))), "approved value at MRP"]
+  ].map(([n, l]) => `<div class="stat"><b>${esc(n)}</b><span>${l}</span></div>`).join("");
+
+  $("tabs").innerHTML = tabsForRole().map(([k, l]) =>
+    `<button class="tab" role="tab" aria-selected="${S.tab === k}" data-tab="${k}">${l}</button>`).join("");
+  $("tabs").querySelectorAll(".tab").forEach(b => b.onclick = () => { S.tab = b.dataset.tab; render(); });
+
+  const p = $("panel");
+  if (S.tab === "moves") p.innerHTML = movesView();
+  else if (S.tab === "findings") p.innerHTML = findingsView();
+  else if (S.tab === "rules") p.innerHTML = rulesView();
+  else if (S.tab === "pick") p.innerHTML = pickView();
+  else if (S.tab === "returns") p.innerHTML = returnsView();
+  wire();
+}
+
+function movesView() {
+  const editable = S.role === "merchandiser";
+  const stores = [...new Set(S.moves.flatMap(m => [m.from, m.to]))].filter(x => x !== "WH-KOL").sort();
+  const list = S.moves.filter(m => S.store === "all" || m.from === S.store || m.to === S.store);
+  const routine = list.filter(m => m.status === "proposed" && !check(m).needsApproval && !check(m).violations.length);
+  const bar = `<div class="bar">
+    <label>Store <select id="storeSel"><option value="all">All stores</option>${stores.map(s => `<option ${S.store === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label>
+    <div class="grow">
+      ${editable ? `<button class="btn primary" id="approveRoutine" ${routine.length ? "" : "disabled"}>Approve ${routine.length} routine moves</button>
+      <button class="btn" data-export="approved">Export approved CSV</button>
+      <button class="btn" data-export="pick">Export pick list CSV</button>
+      <button class="btn" data-export="json">Export approvals JSON</button>` : ""}
+    </div></div>`;
+  if (!list.length) return bar + `<div class="empty">No moves yet. Run the engine, or use the demo upload button.</div>`;
+  const rows = list.map(m => {
+    const c = check(m);
+    const tags = [
+      c.needsApproval && !m.exception ? `<span class="tag warn">over Rs 1 lakh: needs approval</span>` : "",
+      m.exception ? `<span class="tag warn">exception: ${esc(m.exception)}</span>` : "",
+      ...c.violations.map(v => `<span class="tag bad">rule: ${esc(v)}</span>`),
+      !c.violations.length ? `<span class="tag good">rules pass</span>` : "",
+      m.source === "demo" ? `<span class="tag">demo</span>` : ""
+    ].join("");
+    const qty = editable && m.status === "proposed"
+      ? `<input class="qty" type="number" min="1" max="${available(m) ?? ""}" value="${m.qty}" data-qty="${esc(m.id)}" aria-label="Quantity">` : m.qty;
+    const act = editable
+      ? (m.status === "proposed"
+          ? `<div class="actions"><button class="btn sm ok" data-approve="${esc(m.id)}">Approve</button><button class="btn sm" data-skip="${esc(m.id)}">Skip</button></div>`
+          : `<div class="actions"><span class="tag ${m.status === "approved" ? "good" : ""}">${m.status}</span><button class="btn sm" data-reset="${esc(m.id)}">Undo</button></div>`)
+      : `<span class="tag ${m.status === "approved" ? "good" : ""}">${esc(m.status)}</span>`;
+    return `<tr class="${c.violations.length ? "violation" : ""} ${m.status === "skipped" ? "skipped" : ""}">
+      <td class="type ${m.type}">${TYPE_LABEL[m.type]}</td>
+      <td>${esc(m.from)} to ${esc(m.to)}</td><td>${esc(m.sku)}</td>
+      <td class="num">${qty}</td><td class="num">${inr(c.value)}</td>
+      <td class="why">${esc(reason(m))}<div style="margin-top:6px">${tags}${m.skipReason ? `<span class="tag">skipped: ${esc(m.skipReason)}</span>` : ""}</div></td>
+      <td>${act}</td></tr>`;
+  }).join("");
+  return bar + `<div class="tablewrap"><table><thead><tr><th>Type</th><th>Move</th><th>SKU</th><th class="num">Qty</th><th class="num">Value at MRP</th><th>Why</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function pickView() {
+  const list = S.moves.filter(m => m.type === "wh_store" && m.status === "approved");
+  const bar = `<div class="bar"><div class="grow"><button class="btn" data-export="pick" ${list.length ? "" : "disabled"}>Export pick list CSV</button></div></div>`;
+  if (!list.length) return bar + `<div class="empty">Nothing to pick yet. The merchandiser has not approved any warehouse dispatches.</div>`;
+  const groups = {};
+  list.forEach(m => (groups[m.to] ||= []).push(m));
+  return bar + Object.entries(groups).sort().map(([store, ms]) => `<div class="group"><h3>${esc(store)}</h3>
+    <div class="tablewrap"><table style="min-width:520px"><thead><tr><th>SKU</th><th class="num">Qty to pick</th><th class="num">Lead (days)</th></tr></thead><tbody>
+    ${ms.map(m => `<tr><td>${esc(m.sku)}</td><td class="num">${m.qty}</td><td class="num">${esc(m.evidence?.lead ?? "")}</td></tr>`).join("")}
+    </tbody></table></div></div>`).join("");
+}
+function returnsView() {
+  const list = S.moves.filter(m => m.type === "pull_back" && m.status === "approved");
+  if (!list.length) return `<div class="empty">No approved pull-backs are heading to the warehouse.</div>`;
+  return `<div class="tablewrap"><table style="min-width:520px"><thead><tr><th>From</th><th>SKU</th><th class="num">Qty</th><th class="num">Lead (days)</th></tr></thead><tbody>
+    ${list.map(m => `<tr><td>${esc(m.from)}</td><td>${esc(m.sku)}</td><td class="num">${m.qty}</td><td class="num">${esc(m.evidence?.lead ?? "")}</td></tr>`).join("")}</tbody></table></div>`;
+}
+function findingsView() {
+  if (!S.findings.length) return `<div class="empty">No findings yet.</div>`;
+  return `<div class="cards">${S.findings.map(f => `<div class="card ${esc(f.severity)}">
+    <h3>${esc(f.title)}</h3><p>${esc(f.detail)}</p>
+    <div style="margin-top:8px"><span class="tag">${esc(f.ref)}</span><span class="tag ${f.action === "hold" || f.action === "quarantine" ? "warn" : ""}">${esc(f.action)}</span></div></div>`).join("")}</div>`;
+}
+function rulesView() {
+  const r = S.rules.length ? S.rules.map(x => `<div class="card"><h3>${esc(x.title)}</h3><p>${esc(x.text)}</p></div>`).join("") : `<div class="empty">No rules loaded.</div>`;
+  const c = S.calendar.length ? S.calendar.map(x => `<div class="card"><h3>${esc(x.festival)}</h3><p>${esc(x.dates)}. ${esc(x.where)}</p></div>`).join("") : "";
+  return `<div class="group"><h3>Rules every move must pass</h3><div class="cards">${r}</div></div>
+          ${c ? `<div class="group"><h3>Calendar</h3><div class="cards">${c}</div></div>` : ""}`;
+}
+
+/* ---------- 8. Actions (merchandiser only; writes go to Firestore) ---------- */
+const byId = id => S.moves.find(m => m.id === id);
+async function decide(id, patch) {
+  try { await updateDoc(doc(db, "moves", id), { ...patch, decidedBy: S.user.email, decidedAt: serverTimestamp() }); }
+  catch (err) { toast("Could not save: " + (err.code || err.message)); }
+}
+function wire() {
+  const q = (sel, fn) => $("panel").querySelectorAll(sel).forEach(fn);
+  const ss = $("storeSel"); if (ss) ss.onchange = () => { S.store = ss.value; render(); };
+  q("[data-approve]", b => b.onclick = () => {
+    const m = byId(b.dataset.approve), c = check(m);
+    if (c.violations.length && !confirm("This move breaks a rule:\n- " + c.violations.join("\n- ") + "\nApprove anyway?")) return;
+    decide(m.id, { status: "approved", skipReason: null });
+  });
+  q("[data-reset]", b => b.onclick = () => decide(b.dataset.reset, { status: "proposed", skipReason: null }));
+  q("[data-skip]", b => b.onclick = () => {
+    const m = byId(b.dataset.skip); skipTarget = m;
+    $("skipWhat").textContent = `${m.qty} x ${m.sku}, ${m.from} to ${m.to}`; $("skipDlg").showModal();
+  });
+  q("[data-qty]", i => i.onchange = () => {
+    const m = byId(i.dataset.qty), n = Math.max(1, Math.floor(+i.value || m.qty));
+    decide(m.id, { qty: n, value: n * m.mrp });
+  });
+  const ar = $("approveRoutine");
+  if (ar) ar.onclick = async () => {
+    const list = S.moves.filter(m => (S.store === "all" || m.from === S.store || m.to === S.store)
+      && m.status === "proposed" && !check(m).needsApproval && !check(m).violations.length);
+    try {
+      const b = writeBatch(db);
+      list.forEach(m => b.update(doc(db, "moves", m.id), { status: "approved", decidedBy: S.user.email, decidedAt: serverTimestamp() }));
+      await b.commit(); toast(`Approved ${list.length} routine moves.`);
+    } catch (err) { toast("Could not approve: " + (err.code || err.message)); }
+  };
+  q("[data-export]", b => b.onclick = () => exportFile(b.dataset.export));
+}
+let skipTarget = null;
+$("skipCancel").onclick = () => $("skipDlg").close();
+$("skipForm").onsubmit = e => {
+  e.preventDefault();
+  decide(skipTarget.id, { status: "skipped", skipReason: $("skipReason").value });
+  $("skipDlg").close();
+};
+
+function download(name, text, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href);
+}
+const csv = rows => rows.map(r => r.map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+function exportFile(kind) {
+  const day = new Date().toISOString().slice(0, 10);
+  if (kind === "json") {
+    const out = S.moves.filter(m => m.status !== "proposed").map(m => ({ key: `${m.from}|${m.to}|${m.sku}`, status: m.status, qty: m.qty, skipReason: m.skipReason || null }));
+    return download(`approvals-${day}.json`, JSON.stringify(out, null, 2), "application/json");
   }
-  download((pick?'pick-list-':'approved-moves-')+D.run.date+'.csv',[head].concat(rows).map(function(r){return r.map(csvCell).join(',')}).join('\r\n')+'\r\n','text/csv');
+  const list = S.moves.filter(m => m.status === "approved" && (kind === "approved" || m.type === "wh_store"));
+  if (!list.length) return toast("Nothing approved to export yet.");
+  const head = kind === "pick" ? ["to_store", "sku", "qty", "lead_days"] : ["type", "from", "to", "sku", "qty", "value_at_mrp", "reason"];
+  const body = list.map(m => kind === "pick" ? [m.to, m.sku, m.qty, m.evidence?.lead] : [TYPE_LABEL[m.type], m.from, m.to, m.sku, m.qty, m.qty * m.mrp, reason(m)]);
+  download(`${kind === "pick" ? "pick-list" : "approved-moves"}-${day}.csv`, csv([head, ...body]), "text/csv");
 }
-function exportJson(){
-  var o = {}; MV.forEach(function(m){ var s=st(m); if(s.status!=='Proposed') o[m.move_id]={status:s.status,qty:s.qty,skip_reason:s.skip_reason,by:s.by,at:s.at}; });
-  download('approvals.json', JSON.stringify(o,null,2), 'application/json');
-}
-})();
+
+/* DELETE-SEED-BUTTON JS START
+   Everything between this line and "DELETE-SEED-BUTTON JS END" is demo-only. Delete it with the
+   CSS block and the HTML button (search the file for DELETE-SEED-BUTTON) when you no longer need it.
+   Demo numbers are illustrative; only the items marked (brief) come from the PDF / decisions doc. */
+const DEMO = {
+  moves: [
+    { id: "m1", type: "wh_store", from: "WH-KOL", to: "MZF-01", sku: "MOJ-01-9", qty: 6, mrp: 2199,
+      evidence: { unitLabel: "Mojari", onHand: 5, minDisplay: 8, vel: 0.4, dstUnits: 128, cap: 350, lead: 3, whAvail: 40, festival: "Chhath on 15 Nov (Bihar)" } },   // (brief) MZF-01 128/350, Mojari 5 < min 8
+    { id: "m2", type: "wh_store", from: "WH-KOL", to: "BLR-05", sku: "SHW-02-L", qty: 3, mrp: 27699,
+      exception: "thin data, store opened 10 Oct 2026",
+      evidence: { unitLabel: "Sherwani", onHand: 2, minDisplay: 5, vel: null, dstUnits: 2, cap: 300, lead: 6, whAvail: 12, festival: "Diwali on 8 Nov" } },            // (brief) BLR-05 Sherwani 2 < min 5; South lead 6 days
+    { id: "m3", type: "wh_store", from: "WH-KOL", to: "LKO-03", sku: "KUR-12-XL", qty: 20, mrp: 6799,
+      evidence: { onHand: 6, vel: 0.9, dstUnits: 40, cap: 600, lead: 2, whAvail: 85, festival: "Diwali on 8 Nov" } },
+    { id: "m4", type: "store_store", from: "LKO-02", to: "LKO-03", sku: "KUR-05-L", qty: 4, mrp: 5999,
+      evidence: { srcOnHand: 30, srcVel: 0.5, dstOnHand: 2, dstVel: 0.6, dstUnits: 60, cap: 600, lead: 1 } },
+    { id: "m5", type: "pull_back", from: "KNP-01", to: "WH-KOL", sku: "JKT-03-L", qty: 5, mrp: 4999,
+      evidence: { onHand: 5, ageDays: 140, sold28: 0, inStock28: 28, lead: 2 } }
+  ].map(m => ({ ...m, status: "proposed", source: "demo" })),
+  findings: [
+    { id: "f1", severity: "high", action: "hold", ref: "KNP-03 SHW-02-L", title: "Suspected keying error: 300 units",
+      detail: "Snapshot says 300 on hand, weekly closing says 0 with 0 days in stock on the same date. Worth Rs 83,09,700 at MRP. On its own it makes KNP-03 look 208% full (520 of 250 instead of 220). Do not pull back; hold for a physical count." },
+    { id: "f2", severity: "high", action: "quarantine", ref: "MYS-02 KUR-02-M", title: "Negative stock: -4",
+      detail: "Snapshot on_hand is -4 while weekly closing is 3. Treated as a data error. This location and SKU neither send nor receive." },
+    { id: "f3", severity: "med", action: "move proposed", ref: "MZF-01", title: "Real under-stock",
+      detail: "Store holds 128 of 350 capacity and Mojari is at 5, under the minimum display of 8." },
+    { id: "f4", severity: "med", action: "exception", ref: "BLR-05", title: "New store, thin history",
+      detail: "Opened 2026-10-10 and billed its first sale the same day. Sherwani is at 2 against a minimum of 5. Every move to it is flagged as an exception." },
+    { id: "f5", severity: "low", action: "rule", ref: "All stores", title: "Zero sales is not always slow",
+      detail: "A SKU with zero sales and few in-stock days was unavailable, not slow. It is never pulled back or given away on that basis." },
+    { id: "f6", severity: "low", action: "counted", ref: "In transit", title: "55 units already on the way",
+      detail: "All arrive on 1 and 2 Nov 2026. They count as stock at the destination and are never sent twice." }
+  ],
+  rules: [
+    { id: "r1", title: "Minimum display", text: "Every store keeps a minimum display per category." },
+    { id: "r2", title: "Capacity", text: "Never fill a store beyond its stock capacity." },
+    { id: "r3", title: "Flagship protection", text: "S++ flagships never give away their top-20 styles." },
+    { id: "r4", title: "Stock in transit", text: "In-transit units count as arriving. Do not send them twice." },
+    { id: "r5", title: "Donor cover", text: "No store-to-store move may leave the giving store with under 30 days of cover." },
+    { id: "r6", title: "Approval limit", text: "A move line worth more than Rs 1,00,000 at MRP needs approval. Moves are never split to avoid it." }
+  ],
+  calendar: [
+    { id: "c1", festival: "Diwali", dates: "8 Nov 2026", where: "All three states" },
+    { id: "c2", festival: "Chhath", dates: "15 Nov 2026", where: "Bihar" },
+    { id: "c3", festival: "Wedding dates", dates: "20 to 30 Nov 2026", where: "Auspicious dates in the calendar tab" }
+  ]
+};
+$("seedBtn").onclick = async () => {
+  if (!configured || !auth.currentUser) return toast("Sign in first, then upload.");
+  if (!confirm("Upload demo data to Firestore? This overwrites moves, findings, rules and calendar with the same ids.")) return;
+  try {
+    const b = writeBatch(db);
+    for (const [col, items] of Object.entries(DEMO)) items.forEach(({ id, ...data }) => b.set(doc(db, col, id), data));
+    await b.commit(); toast("Demo data uploaded.");
+  } catch (err) { toast("Upload failed: " + (err.code || err.message) + " (check Firestore rules allow your write)"); }
+};
+/* DELETE-SEED-BUTTON JS END */
 </script>
 </body>
 </html>
