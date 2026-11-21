@@ -201,6 +201,16 @@ const DEMO = (() => {
   }));
   return { stores, inv };
 })();
+
+/* ---------- sample warehouse data: shown only while there are no real approved moves / findings ---------- */
+const DEMO_MOVES = [["KOL-01","KUR-02-L",12,3,1.8,1,6799,6],["KOL-02","SHE-01-L",4,1,.5,1,24999,3],["KOL-03","KUR-05-M",10,6,1.4,2,5499,0],["KOL-05","IND-04-M",6,2,.6,2,14999,0],["KOL-08","MOJ-01-9",15,4,1.1,1,2199,8],["KOL-04","KUR-12-XL",8,14,1,3,6799,0],["KOL-09","JAC-03-L",5,9,.7,3,8999,0],["KOL-12","SAF-01-FS",20,18,.9,4,1299,0]]
+  .map(([to, sku, qty, onHand, vel, lead, mrp, md], i) => ({ id: "demo-wh-" + i, demo: true, type: "wh_store", status: "approved", sku, from: "WH-KOL", to, qty, mrp, evidence: { onHand, vel, lead, whAvail: 200, minDisplay: md || undefined, inTransit: 0 } }))
+  .concat([["KOL-07","SHE-03-XL",6,150,0],["KOL-10","KUR-08-S",9,120,1],["KOL-06","STO-02-FS",14,95,0],["KOL-11","MOJ-02-8",7,110,1]]
+  .map(([from, sku, qty, ageDays, sold28], i) => ({ id: "demo-pb-" + i, demo: true, type: "pull_back", status: "approved", sku, from, to: "WH-KOL", qty, mrp: 3000, evidence: { onHand: qty, ageDays, sold28, inStock28: 26 } })));
+const DEMO_FINDINGS = [{ id: "d1", title: "KOL-04 sales jump looks like a data error", detail: "Units sold tripled in one day with no festival. Check the bill lines before moving stock.", ref: "KOL-04", action: "hold", severity: "high" },
+  { id: "d2", title: "KOL-02 is under minimum display on Sherwani", detail: "Fewer units on the floor than the display minimum. A warehouse shipment is queued.", ref: "KOL-02", action: "move proposed", severity: "med" },
+  { id: "d3", title: "Kurta sets sell fastest in Salt Lake and Park Street", detail: "The two flagship stores account for most kurta sales this month.", ref: "KOL-01, KOL-02", action: "info", severity: "low" }];
+const approvedOf = t => { const r = S.moves.filter(m => m.type === t && m.status === "approved"); return r.length ? r : DEMO_MOVES.filter(m => m.type === t); };
 const S = { user: null, role: null, tab: "", store: "all", moves: [], findings: [], data_guide: [], brief: [], stores: [], inventory: [], unsubs: [], f: { store: "all", cat: "all", st: "all" }, sel: null };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -366,7 +376,7 @@ function progress() {
 }
 
 /* ---------- views ---------- */
-const COMMON = [["findings", "Hidden problems", "search"], ["about", "About the data", "grid"]];
+const COMMON = [["findings", "Hidden problems", "search"]];
 function tabs() {
   return { warehouse: [["pick", "Pick list", "truck"], ["returns", "Coming back", "undo"], ...COMMON],
     area_manager: [["alerts", "My alerts", "alert"], ["all", "All moves", "list"], ...COMMON],
@@ -428,23 +438,24 @@ function fcView() {
 const alertList = () => S.moves.filter(m => m.status !== "skipped" && (urgent(m) || check(m).approval || check(m).v.length)).slice(0, AM_ALERTS);
 function alerts() { const top = alertList(); return `<p class="sum">The ${AM_ALERTS} most important alerts. Read-only: the merchandiser decides.</p>${top.length ? top.map(m => moveCard(m, false)).join("") : `<div class="empty">Nothing needs your attention right now.</div>`}`; }
 function pick() {
-  const list = S.moves.filter(m => m.type === "wh_store" && m.status === "approved").sort((a, b) => (urgent(b) ? 1 : 0) - (urgent(a) ? 1 : 0) || (a.evidence?.lead ?? 9) - (b.evidence?.lead ?? 9)), done = ls.get("sm-picks-", []);
+  const list = approvedOf("wh_store").sort((a, b) => (urgent(b) ? 1 : 0) - (urgent(a) ? 1 : 0) || (a.evidence?.lead ?? 9) - (b.evidence?.lead ?? 9)), done = ls.get("sm-picks-", []);
   if (!list.length) return `<div class="empty">${ic("truck", "width:30px;height:30px")}<br>Nothing to pick yet. The merchandiser has not approved any warehouse dispatches.</div>`;
   const g = {}; list.forEach(m => (g[m.to] ||= []).push(m));
-  return `<p class="sum">${list.length} lines, ${list.reduce((a, m) => a + m.qty, 0)} units to pick, for ${Object.keys(g).length} stores. ${list.filter(m => done.includes(m.id)).length} picked. Urgent shipments are on top.</p>` + Object.entries(g).sort((a, b) => b[1].some(urgent) - a[1].some(urgent) || a[0].localeCompare(b[0])).map(([s, ms]) =>
+  return `${list[0].demo ? `<p class="sum">${ic("alert")} Sample data: the merchandiser has not approved any dispatches yet.</p>` : ""}<p class="sum">${list.length} lines, ${list.reduce((a, m) => a + m.qty, 0)} units to pick, for ${Object.keys(g).length} stores. ${list.filter(m => done.includes(m.id)).length} picked. Urgent shipments are on top.</p>` + Object.entries(g).sort((a, b) => b[1].some(urgent) - a[1].some(urgent) || a[0].localeCompare(b[0])).map(([s, ms]) =>
     `<section class="grp"><h3>${ic("store")}${esc(s)}${ms.some(urgent) ? ` <span class="tag bad">${ic("flame")} urgent</span>` : ""}</h3><div class="scroll"><table><tr><th></th><th>SKU</th><th class="n">Units to pick</th><th class="n">Arrives in (days)</th><th>Picked</th></tr>${ms.map(m =>
     `<tr><td>${artTile(m.sku, "", "ph")}</td><td>${esc(m.sku)}</td><td class="n">${m.qty}</td><td class="n">${esc(m.evidence?.lead ?? "")}</td><td><input type="checkbox" data-pick="${esc(m.id)}" ${done.includes(m.id) ? "checked" : ""} aria-label="Picked"></td></tr>`).join("")}</table></div></section>`).join("");
 }
 function returns() {
-  const l = S.moves.filter(m => m.type === "pull_back" && m.status === "approved");
-  return l.length ? `<div class="scroll"><table><tr><th></th><th>From store</th><th>SKU</th><th class="n">Units</th></tr>${l.map(m => `<tr><td>${artTile(m.sku, "", "ph")}</td><td>${esc(m.from)}</td><td>${esc(m.sku)}</td><td class="n">${m.qty}</td></tr>`).join("")}</table></div>` : `<div class="empty">No approved pull-backs are on their way back.</div>`;
+  const l = approvedOf("pull_back");
+  return l.length ? `${l[0].demo ? `<p class="sum">${ic("alert")} Sample data: no pull-backs approved yet.</p>` : ""}<div class="scroll"><table><tr><th></th><th>From store</th><th>SKU</th><th class="n">Units</th></tr>${l.map(m => `<tr><td>${artTile(m.sku, "", "ph")}</td><td>${esc(m.from)}</td><td>${esc(m.sku)}</td><td class="n">${m.qty}</td></tr>`).join("")}</table></div>` : `<div class="empty">No approved pull-backs are on their way back.</div>`;
 }
 function findings() {
+  const FD = S.findings.length ? S.findings : DEMO_FINDINGS;
   const grp = f => ["hold", "quarantine"].includes(f.action) ? 0 : ["exception", "move proposed"].includes(f.action) ? 1 : 2;
   const names = ["Check these first: possible data errors", "Stores to watch", "Good to know"], ico = ["alert", "pin", "star"], seen = getSeen();
-  if (!S.findings.length) return `<div class="empty">No findings yet.</div>`;
-  return `<p class="sum">${seen.filter(id => S.findings.some(f => f.id === id)).length} of ${S.findings.length} checked.</p>` + names.map((n, i) => {
-    const l = S.findings.filter(f => grp(f) === i); if (!l.length) return "";
+  if (!FD.length) return `<div class="empty">No findings yet.</div>`;
+  return `<p class="sum">${seen.filter(id => FD.some(f => f.id === id)).length} of ${FD.length} checked.</p>` + names.map((n, i) => {
+    const l = FD.filter(f => grp(f) === i); if (!l.length) return "";
     return `<section class="grp"><h3>${ic(ico[i])}${n}</h3><div class="cards">${l.map(f => `<div class="card ${esc(f.severity)} ${seen.includes(f.id) ? "seen" : ""}"><h4>${esc(f.title)}</h4><p>${esc(f.detail)}</p>
       <span class="tag">${esc(f.ref)}</span><span class="tag ${i === 0 ? "warn" : ""}">${esc(f.action)}</span><div class="acts">${seen.includes(f.id) ? `<span class="tag good">${ic("check")} checked</span>` : `<button class="btn sm" data-seen="${esc(f.id)}">${ic("check")}Mark as checked</button>`}</div></div>`).join("")}</div></section>`;
   }).join("");
