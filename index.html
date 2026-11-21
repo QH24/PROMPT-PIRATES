@@ -3,18 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Stock Mover</title>
+<title>Manyavar Stock Mover</title>
+<link rel="icon" href="favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
 <!--
-  SETUP: serve over http (python -m http.server 5500, open http://localhost:5500), not file://.
+  SETUP: serve over http (python -m http.server 5500, open http://localhost:5500), not file://. Keep favicon.ico and logo.png next to this file.
   Firebase console: enable Google sign-in, add "localhost" to Authorized domains, create Firestore.
-  Collections the page reads: moves, findings, rules, calendar, data_guide, brief
-  OPTIONAL (engine should write them; the page falls back to the moves' evidence if missing):
-    stores     {id:"LKO-01", city, lat, lng, tier, capacity}
-    inventory  {store, sku, onHand, inTransit, vel, ageDays, sold28, mrp, category}
-  Firestore rules (final):
+  Collections read: moves, findings, data_guide, brief, stores, inventory
+    stores     {id:"KOL-01", city, lat, lng, tier, capacity}
+    inventory  {store, sku, onHand, inTransit, vel, ageDays, sold28, mrp, image?}   (image = optional photo URL)
+  Approved moves are applied on top of the inventory snapshot, so stock changes live for every role.
+  Firestore rules:
     rules_version = '2';
     service cloud.firestore { match /databases/{db}/documents {
       match /users/{uid} {
@@ -33,78 +34,71 @@
     } }
 -->
 <style>
-:root{--ink:#2b2420;--soft:#6b5f56;--paper:#f6efe2;--panel:#fffaf0;--line:#e3d6bf;--maroon:#6e1f2b;--saffron:#d9801f;--teal:#2f6f68;--red:#b3261e;--ok:#2f6f43;--gold:#e0b04a;
+:root{--ink:#221d1a;--soft:#756a60;--paper:#faf7f1;--panel:#fff;--line:#ebe3d3;--maroon:#6e1f2b;--gold:#b8923a;--gold2:#d4b062;--teal:#2f6f68;--red:#b3261e;--amber:#c47a1a;--ok:#2f6f43;
 --serif:"Playfair Display",Georgia,serif;--sans:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
-*{box-sizing:border-box}body{margin:0;font-family:var(--sans);background:var(--paper);color:var(--ink);line-height:1.5;font-size:15px}
-button,input,select{font:inherit;color:inherit}:focus-visible{outline:3px solid var(--saffron);outline-offset:2px}[hidden]{display:none!important}
-.ic{width:1.15em;height:1.15em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.17em;flex:none}
-.top{background:var(--maroon);color:#fbeedb;display:flex;align-items:center;gap:14px;padding:12px 24px;flex-wrap:wrap}
-.brand{font-family:var(--serif);font-size:24px;font-weight:700;margin-right:auto;display:flex;align-items:center;gap:10px}.brand small{font:400 13px var(--sans);opacity:.75}
-.who{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.who img{width:30px;height:30px;border-radius:50%}
-.chip{background:#fbeedb;color:var(--maroon);padding:2px 10px;border-radius:999px;font-weight:700;font-size:13px}
-.btn{border:1px solid var(--line);background:var(--panel);padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:500;display:inline-flex;gap:6px;align-items:center}.btn:hover{border-color:var(--maroon)}
-.btn.primary{background:var(--saffron);border-color:var(--saffron);color:#2b1a05;font-weight:700}.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
-.btn.urg{background:var(--red);border-color:var(--red);color:#fff;font-weight:700}
-.btn.ghost{background:transparent;color:#fbeedb;border-color:#fbeedb77}.btn.sm{padding:4px 12px;font-size:14px}.btn:disabled{opacity:.5;cursor:not-allowed}
-.login{min-height:calc(100vh - 60px);display:grid;place-items:center;padding:24px}.login>div{max-width:520px}
-.login h1{font:700 44px/1.1 var(--serif);color:var(--maroon);margin:0 0 12px}.login p{color:var(--soft);margin:0 0 22px}
-.gbtn{display:inline-flex;gap:12px;align-items:center;background:#fff;border:1px solid #cfc3ad;border-radius:6px;padding:10px 18px;font-weight:700;cursor:pointer}
-main{max-width:1150px;margin:0 auto;padding:22px}
-.banner{display:flex;align-items:center;gap:18px;background:linear-gradient(120deg,#fffaf0,#f3e5c8);border:1px solid var(--line);border-radius:14px;padding:14px 20px;margin-bottom:16px;overflow:hidden}
-.banner p{font:600 22px/1.3 var(--serif);margin:0;flex:1}.banner svg.art{width:150px;height:110px;flex:none}
-.game{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:18px;display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center}
-.ring{position:relative;width:92px;height:92px}.ring svg{width:92px;height:92px;transform:rotate(-90deg)}.ring .c{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font-weight:700;line-height:1.1}.ring .c small{display:block;font-weight:500;color:var(--soft);font-size:11px}
-.gtop{display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;margin-bottom:6px}.gtop b{font:700 20px var(--serif)}.gtop span{color:var(--soft);font-size:14px}.streak{color:var(--saffron);font-weight:700}
-.bar{height:12px;background:#eadfc9;border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--ok),var(--gold));transition:width .5s}
-.badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.badge{font-size:13px;padding:3px 10px 3px 8px;border-radius:99px;border:1px dashed var(--line);color:#a09484;background:#fff;display:inline-flex;gap:5px;align-items:center;filter:grayscale(1)}
-.badge.got{border:1px solid var(--saffron);background:#fff3de;color:#7a4300;font-weight:700;filter:none}
-.tabs{display:flex;gap:2px;border-bottom:2px solid var(--line);margin-bottom:16px;overflow-x:auto}
-.tab{background:none;border:0;padding:8px 14px;cursor:pointer;color:var(--soft);border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;display:flex;gap:6px;align-items:center}
-.tab[aria-selected=true]{color:var(--maroon);font-weight:700;border-bottom-color:var(--maroon)}
+*{box-sizing:border-box}body{margin:0;font-family:var(--sans);background:var(--paper);color:var(--ink);line-height:1.5;font-size:14.5px}
+button,input,select{font:inherit;color:inherit}:focus-visible{outline:2px solid var(--gold);outline-offset:2px}[hidden]{display:none!important}
+.ic{width:1.1em;height:1.1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.17em;flex:none}
+.top{background:#fff;border-bottom:2px solid var(--gold);display:flex;align-items:center;gap:14px;padding:10px 28px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:14px;margin-right:auto}.brand img{height:38px;width:auto}.brand .wm{font:700 20px var(--serif);color:var(--maroon)}
+.brand small{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);border-left:1px solid var(--line);padding-left:14px}
+.who{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px}.who img{width:28px;height:28px;border-radius:50%}
+.chip{border:1px solid var(--gold);color:#7a5c14;padding:1px 10px;border-radius:999px;font-weight:700;font-size:12px;background:#fbf5e6}
+.btn{border:1px solid var(--line);background:#fff;padding:6px 13px;border-radius:6px;cursor:pointer;font-weight:500;display:inline-flex;gap:6px;align-items:center}.btn:hover{border-color:var(--gold)}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:#fff;font-weight:700}.btn.primary:hover{background:#a3802f}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}.btn.urg{background:var(--red);border-color:var(--red);color:#fff;font-weight:700}
+.btn.ghost{background:transparent}.btn.sm{padding:3px 10px;font-size:13px}.btn:disabled{opacity:.45;cursor:not-allowed}
+.login{min-height:calc(100vh - 62px);display:grid;place-items:center;padding:24px}.login>div{max-width:500px;text-align:center}
+.login img{height:70px;margin-bottom:18px}.login h1{font:700 36px/1.15 var(--serif);color:var(--maroon);margin:0 0 12px}
+.login h1:after{content:"";display:block;width:56px;height:3px;background:var(--gold);margin:14px auto 0}
+.login p{color:var(--soft);margin:16px 0 22px}
+.gbtn{display:inline-flex;gap:12px;align-items:center;background:#fff;border:1px solid var(--gold);border-radius:6px;padding:10px 20px;font-weight:700;cursor:pointer}
+main{max-width:1180px;margin:0 auto;padding:22px 24px}
+.banner{border-left:3px solid var(--gold);padding:4px 0 4px 16px;margin-bottom:14px}.banner p{font:600 20px/1.35 var(--serif);margin:0}
+.prog{display:flex;gap:12px;align-items:center;margin-bottom:14px;color:var(--soft);font-size:13px}.bar{height:6px;background:#eee5d2;border-radius:99px;overflow:hidden;flex:1}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--gold2));transition:width .4s}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:18px;overflow-x:auto}
+.tab{background:none;border:0;padding:9px 14px;cursor:pointer;color:var(--soft);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;display:flex;gap:6px;align-items:center}
+.tab[aria-selected=true]{color:var(--maroon);font-weight:700;border-bottom-color:var(--gold)}
 .tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}.tools .r{margin-left:auto}
-select,input[type=number]{background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
-.grp{margin-bottom:26px}.grp h3{font:700 21px var(--serif);margin:0;display:flex;gap:8px;align-items:center}.sum{margin:0 0 10px;color:var(--soft)}
-.urgq{border:2px solid var(--red);background:#fff4f2;border-radius:12px;padding:12px 14px;margin-bottom:22px}.urgq h3{color:var(--red)}
-.mv{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--teal);border-radius:10px;padding:12px 16px;margin-bottom:10px;display:grid;grid-template-columns:52px 1fr auto;gap:12px}
-.mv.store_store{border-left-color:var(--maroon)}.mv.pull_back{border-left-color:var(--saffron)}.mv.bad{background:#fdf0ee}.mv.skipped{opacity:.55}.mv.isurg{border-left-color:var(--red)}
-.art{width:52px;height:52px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--c,#2f6f68) 16%,#fff);color:var(--c,#2f6f68)}.art svg{width:34px;height:34px;fill:currentColor}
+select,input[type=number]{background:#fff;border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+.grp{margin-bottom:26px}.grp h3{font:700 19px var(--serif);margin:0 0 2px;display:flex;gap:8px;align-items:center}.sum{margin:0 0 10px;color:var(--soft);font-size:13.5px}
+.urgq{border:1px solid var(--red);background:#fff7f5;border-radius:10px;padding:12px 14px;margin-bottom:22px}.urgq h3{color:var(--red)}
+.mv{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:10px;padding:12px 16px;margin-bottom:10px;display:grid;grid-template-columns:52px 1fr auto;gap:12px}
+.mv.store_store{border-left-color:var(--maroon)}.mv.pull_back{border-left-color:var(--gold)}.mv.bad{background:#fdf3f1}.mv.skipped{opacity:.55}.mv.isurg{border-left-color:var(--red)}
+.art{position:relative;overflow:hidden;width:52px;height:52px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--c,#2f6f68) 14%,#fff);color:var(--c,#2f6f68)}.art svg{width:32px;height:32px;fill:currentColor}
+.art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.art.ph{width:46px;height:46px}.art.ph svg{width:28px;height:28px}
 .mvh{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;font-weight:700}.mvh em{font-style:normal;color:var(--soft);font-weight:500}
-.why{margin:4px 0}.nums{margin:2px 0 8px;color:var(--soft);font-size:14px}.mvr{text-align:right;min-width:140px}
-.tag{display:inline-flex;gap:4px;align-items:center;font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);margin:0 4px 4px 0;background:#fff}
-.tag.warn{border-color:var(--saffron);background:#fff3de;color:#7a4300}.tag.bad{border-color:var(--red);background:#fde8e6;color:var(--red)}.tag.good{border-color:var(--ok);background:#e6f4ea;color:var(--ok)}
+.why{margin:4px 0}.nums{margin:2px 0 8px;color:var(--soft);font-size:13px}.mvr{text-align:right;min-width:140px}
+.tag{display:inline-flex;gap:4px;align-items:center;font-size:11.5px;padding:0 8px;border-radius:99px;border:1px solid var(--line);margin:0 4px 4px 0;background:#fff;line-height:1.7}.tag .ic{width:.85em;height:.85em}
+.tag.warn{border-color:var(--gold);background:#fbf5e6;color:#7a5c14}.tag.bad{border-color:var(--red);background:#fde8e6;color:var(--red)}.tag.good{border-color:var(--ok);background:#e6f4ea;color:var(--ok)}
 .acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}.qty{width:72px}
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
-.card{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--teal);border-radius:10px;padding:12px 16px}
-.card.high,.card.bad{border-left-color:var(--red)}.card.med,.card.warn{border-left-color:var(--saffron)}.card.ok{border-left-color:var(--ok)}.card h4{margin:0 0 4px;font-size:16px;display:flex;gap:6px;align-items:center}.card p{margin:0 0 8px;color:var(--soft);font-size:14px}
-.card.seen{opacity:.6}.card.sel{outline:3px solid var(--saffron)}.card.click{cursor:pointer}
-table{border-collapse:collapse;width:100%;background:var(--panel);border:1px solid var(--line)}td,th{padding:8px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}td.n,th.n{text-align:right}
-.scroll{overflow-x:auto}.empty{padding:30px;text-align:center;color:var(--soft);background:var(--panel);border:1px dashed var(--line);border-radius:8px}
-.two{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px}.mapbox{background:#eaf1ee;border:1px solid var(--line);border-radius:14px;padding:8px}.mapbox svg{width:100%;height:auto;display:block}
-.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12px;font-weight:700}.pill.hot{background:#fde8e6;color:var(--red)}.pill.slow{background:#fff3de;color:#7a4300}.pill.okp{background:#e6f4ea;color:var(--ok)}
-.meter{height:8px;background:#eadfc9;border-radius:9px;overflow:hidden}.meter i{display:block;height:100%}
-dialog{border:0;border-radius:12px;padding:24px;max-width:480px;width:calc(100% - 32px);background:var(--panel);color:var(--ink)}dialog::backdrop{background:#2b242099}
-dialog h2{font:700 26px var(--serif);margin:0 0 6px}dialog p{margin:0 0 14px;color:var(--soft)}
-.roleopt{display:flex;gap:12px;align-items:center;border:2px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:10px;cursor:pointer;background:#fff}.roleopt:has(input:checked){border-color:var(--maroon);background:#fbeef0}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:10px;padding:12px 16px}
+.card.high,.card.bad{border-left-color:var(--red)}.card.med,.card.warn{border-left-color:var(--gold)}.card.ok{border-left-color:var(--ok)}.card h4{margin:0 0 4px;font-size:15px;display:flex;gap:6px;align-items:center}.card p{margin:0 0 8px;color:var(--soft);font-size:13.5px}.card.seen{opacity:.6}
+table{border-collapse:collapse;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px}td,th{padding:7px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle;font-size:14px}th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);background:#fcfaf5}td.n,th.n{text-align:right}
+.sub{color:var(--soft);font-size:12px}.scroll{overflow-x:auto}.empty{padding:30px;text-align:center;color:var(--soft);background:var(--panel);border:1px dashed var(--line);border-radius:8px}
+.two{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px;align-items:start}.mapbox{background:#f4f1e8;border:1px solid var(--line);border-radius:12px;padding:6px}.mapbox svg{width:100%;height:auto;display:block}
+.pill{display:inline-block;padding:0 8px;border-radius:99px;font-size:11px;font-weight:700;line-height:1.7}.pill.hot{background:#fde8e6;color:var(--red)}.pill.slow{background:#fbf5e6;color:#7a5c14}.pill.okp{background:#e6f4ea;color:var(--ok)}
+.hc{display:inline-flex;gap:4px;align-items:center;font-size:12px;color:var(--soft);margin-right:10px}.hc i{width:8px;height:8px;border-radius:50%;display:inline-block}.hc.hot i{background:var(--red)}.hc.slow i{background:var(--gold)}.hc.ok i{background:var(--ok)}
+.srow{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:6px;cursor:pointer}.srow:hover{border-color:var(--gold)}.srow.sel{border-color:var(--gold);box-shadow:inset 3px 0 0 var(--gold)}.srow b{min-width:60px}.srow .sp{margin-left:auto;font-size:12px;color:var(--soft)}
+.meter{height:6px;background:#eee5d2;border-radius:9px;overflow:hidden}.meter i{display:block;height:100%}
+.sd{background:#fff;border:1px solid var(--line);border-top:3px solid var(--gold);border-radius:12px;padding:16px 18px;margin-top:20px}.sd h3{font:700 22px var(--serif);margin:0}.stats{display:flex;gap:26px;flex-wrap:wrap;margin:12px 0}.stats div{font-size:12px;color:var(--soft);text-transform:uppercase;letter-spacing:.05em}.stats b{display:block;font:700 20px var(--serif);color:var(--ink);text-transform:none;letter-spacing:0}
+dialog{border:0;border-radius:12px;padding:24px;max-width:480px;width:calc(100% - 32px);background:#fff;color:var(--ink);border-top:3px solid var(--gold)}dialog::backdrop{background:#221d1a99}
+dialog h2{font:700 24px var(--serif);margin:0 0 6px}dialog p{margin:0 0 14px;color:var(--soft)}
+.roleopt{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:10px;cursor:pointer}.roleopt:has(input:checked){border-color:var(--gold);background:#fbf5e6}
 .roleopt span{display:block;font-size:13px;color:var(--soft)}.dbtn{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:6px;z-index:50;max-width:90vw}
-.xp{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:var(--gold);color:#3a2600;font-weight:700;padding:8px 18px;border-radius:99px;z-index:60;animation:rise 1.6s ease-out forwards;pointer-events:none}
-@keyframes rise{to{transform:translate(-50%,-70px);opacity:0}}
-.cf{position:fixed;top:-10px;width:9px;height:14px;z-index:70;animation:fall 2.4s ease-in forwards;pointer-events:none}@keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:.8}}
-@media(prefers-reduced-motion:reduce){.xp,.cf{animation-duration:.01s}}
-@media(max-width:760px){.top,main{padding:12px}.login h1{font-size:34px}.two{grid-template-columns:1fr}.mv{grid-template-columns:44px 1fr}.mvr{grid-column:1/-1;text-align:left}.game{grid-template-columns:1fr}.banner svg.art{display:none}}
+@media(max-width:760px){.top,main{padding:12px}.two{grid-template-columns:1fr}.mv{grid-template-columns:44px 1fr}.mvr{grid-column:1/-1;text-align:left}.brand small{display:none}}
 </style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-<symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1-2.1-.2-4 2-6 .5 2.5 2 4.900 4 6.500 2 1.600 3 3.500 3 5.500a7 7 0 1 1-14 0c0-1.200.4-2.300 1-3a2.500 2.500 0 0 0 2.500 2.500z"/></symbol>
+<symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.500 3 5.500a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.500 2.500 0 0 0 2.500 2.500z"/></symbol>
 <symbol id="i-truck" viewBox="0 0 24 24"><path d="M10 17h4V5H2v12h3m15 0h2v-5l-3-4h-4v9h2M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></symbol>
 <symbol id="i-store" viewBox="0 0 24 24"><path d="M3 9l1-5h16l1 5M3 9v11h18V9M3 9c0 1.500 1.300 2.500 3 2.500S9 10.500 9 9c0 1.500 1.300 2.500 3 2.500s3-1 3-2.500c0 1.500 1.300 2.500 3 2.500s3-1 3-2.500M9 20v-6h6v6"/></symbol>
 <symbol id="i-wh" viewBox="0 0 24 24"><path d="M3 21V9l9-6 9 6v12M7 21v-8h10v8M7 17h10"/></symbol>
 <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.200-7-11a7 7 0 0 1 14 0c0 4.800-7 11-7 11zM12 12a2.500 2.500 0 1 0 0-5 2.500 2.500 0 0 0 0 5z"/></symbol>
 <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.800 5.700 6.200.9-4.500 4.400 1 6.200L12 17.200l-5.500 3 1-6.200L3 9.600l6.200-.9z"/></symbol>
-<symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></symbol>
-<symbol id="i-clock" viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"/></symbol>
 <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.500l4.500 4.500L19 7.500"/></symbol>
 <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3zM12 10v5M12 18v.5"/></symbol>
 <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
@@ -114,12 +108,10 @@ dialog h2{font:700 26px var(--serif);margin:0 0 6px}dialog p{margin:0 0 14px;col
 <symbol id="i-up" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></symbol>
 <symbol id="i-down" viewBox="0 0 24 24"><path d="M3 7l6 6 4-4 8 8M15 17h6v-6"/></symbol>
 <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.500 8-8 9-4.500-1-8-4-8-9V6l8-3zM9 12l2 2 4-4"/></symbol>
-<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></symbol>
 <symbol id="i-target" viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01"/></symbol>
-<symbol id="i-medal" viewBox="0 0 24 24"><path d="M12 15a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM8.500 14L7 22l5-3 5 3-1.500-8"/></symbol>
 <symbol id="i-grid" viewBox="0 0 24 24"><path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></symbol>
-<symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4h6a3 3 0 0 1 2 1 3 3 0 0 1 2-1h6v15h-6a3 3 0 0 0-2 1 3 3 0 0 0-2-1H4V4zM12 5v15"/></symbol>
 <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.500-4.500"/></symbol>
 <symbol id="a-kurta" viewBox="0 0 48 48"><path d="M16 6l8 4 8-4 8 8-5 4v24H13V18l-5-4 8-8z"/></symbol>
 <symbol id="a-sherwani" viewBox="0 0 48 48"><path d="M18 5l6 5 6-5 6 6-3 5 2 26H13l2-26-3-5 6-6z"/></symbol>
 <symbol id="a-mojari" viewBox="0 0 48 48"><path d="M6 32c0-6 6-10 12-10l6 6c6 0 18 0 18 8v2H6v-6z"/></symbol>
@@ -128,7 +120,7 @@ dialog h2{font:700 26px var(--serif);margin:0 0 6px}dialog p{margin:0 0 14px;col
 </defs></svg>
 
 <header class="top">
-  <div class="brand"><svg class="ic" style="width:30px;height:30px"><use href="#i-box"/></svg><span>Stock Mover</span><small>Right stock. Right store. Right size.</small></div>
+  <div class="brand"><img src="logo.png" alt="Manyavar" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="wm" hidden>Manyavar</span><small>Stock Mover</small></div>
   <div class="who" id="who" hidden>
     <img id="avatar" alt="" referrerpolicy="no-referrer"><span id="uname"></span><span class="chip" id="rolechip"></span>
     <button class="btn ghost sm" id="switchBtn"><svg class="ic"><use href="#i-swap"/></svg>Switch account</button><button class="btn ghost sm" id="signOut">Sign out</button>
@@ -136,19 +128,20 @@ dialog h2{font:700 26px var(--serif);margin:0 0 6px}dialog p{margin:0 0 14px;col
 </header>
 
 <section class="login" id="loginView"><div>
+  <img src="logo.png" alt="Manyavar" onerror="this.hidden=true">
   <h1>Today's stock moves, ready to approve.</h1>
-  <p>Sign in with Google. Your role decides what you see: the merchandiser's approval list, the warehouse pick list, an area manager's alerts, or a regional manager's map of every store. A new Google account gets its own role.</p>
+  <p>Sign in with Google. Your role decides what you see: the merchandiser's approval list, the warehouse pick list, an area manager's alerts, or a regional manager's map of every store.</p>
   <button class="gbtn" id="googleBtn"><svg class="ic"><use href="#i-shield"/></svg>Sign in with Google</button>
 </div></section>
 
 <main id="appView" hidden><div id="hero"></div><div id="game"></div><div class="tabs" role="tablist" id="tabs"></div><div id="panel"></div></main>
 
-<dialog id="roleDlg"><h2>Welcome. What's your role?</h2><p id="roleWho">This decides what you see. You choose once for this Google account.</p>
+<dialog id="roleDlg"><h2>Welcome. What's your role?</h2><p id="roleWho"></p>
   <form id="roleForm"><div id="roleOpts"></div><div class="dbtn"><button class="btn primary" type="submit">Save and continue</button></div></form></dialog>
 <dialog id="skipDlg"><h2>Skip this move</h2><p id="skipWhat"></p>
   <form id="skipForm"><label>Why?<br><select id="skipReason" style="width:100%"><option>Stock needed at the giving store</option><option>Wrong size or style for this store</option><option>Waiting for a physical stock count</option><option>Too close to a festival to move</option><option>Other</option></select></label>
   <div class="dbtn"><button class="btn" type="button" id="skipCancel">Cancel</button><button class="btn primary" type="submit">Skip move</button></div></form></dialog>
-<dialog id="relDlg"><h2>Relocate slow stock</h2><p id="relWhat"></p>
+<dialog id="relDlg"><h2>Relocate stock</h2><p id="relWhat"></p>
   <form id="relForm"><label>Send to<br><select id="relTo" style="width:100%"></select></label><p id="relInfo" style="margin-top:8px"></p>
   <label>Units <input type="number" id="relQty" min="1" value="1"></label>
   <div class="dbtn"><button class="btn" type="button" id="relCancel">Cancel</button><button class="btn primary" type="submit">Send to merchandiser</button></div></form></dialog>
@@ -174,30 +167,29 @@ const ROLES = {
 };
 const TYPES = { wh_store: ["Send from the warehouse", "wh"], store_store: ["Move between stores", "swap"], pull_back: ["Bring back to the warehouse", "undo"] };
 const PLAN = Date.UTC(2026, 10, 1);
-const LIMIT = 100000, MIN_COVER = 30, GOAL_SECS = 600, AM_ALERTS = 5, HORIZON = 14, FEST_UPLIFT = 1.3, SLOW_COVER = 90;
-const LEVELS = [[0, "Rookie"], [40, "Planner"], [100, "Stock pro"], [200, "Stock master"], [400, "Legend"]];
+const LIMIT = 100000, MIN_COVER = 30, AM_ALERTS = 5, HORIZON = 14, FEST_UPLIFT = 1.3, SLOW_COVER = 90;
 const GENRES = { "Stores and people": ["stores", "area_managers", "salespeople", "roster_daily", "footfall_daily"],
   "Products and sales": ["items", "bills", "bill_lines"], "Stock": ["stock_snapshot", "stock_weekly", "warehouse_inbound"], "Calendar and rules": ["calendar", "stock_rules"] };
 const WORDS = [["Velocity", "How many units a style and size sells per day in a store."], ["Cover", "How many days the stock on hand will last at that speed."],
   ["In transit", "Already on its way. It counts as arriving and is never sent twice."], ["Minimum display", "The fewest units a store must keep on show in each category."],
   ["Days in stock", "Days a SKU actually had stock. Zero sales with few days in stock means unavailable, not slow."]];
-const CATS = { KUR: ["Kurta Set", "kurta", "#2f6f68"], SHE: ["Sherwani", "sherwani", "#6e1f2b"], SHR: ["Sherwani", "sherwani", "#6e1f2b"], IND: ["Indo-Western", "jacket", "#7b4b94"], JAC: ["Jacket", "jacket", "#d9801f"],
+const CATS = { KUR: ["Kurta Set", "kurta", "#2f6f68"], SHE: ["Sherwani", "sherwani", "#6e1f2b"], SHR: ["Sherwani", "sherwani", "#6e1f2b"], IND: ["Indo-Western", "jacket", "#7b4b94"], JAC: ["Jacket", "jacket", "#b8923a"],
   MOJ: ["Mojari", "mojari", "#a0522d"], SAF: ["Safa", "box", "#b8860b"], MAL: ["Mala", "box", "#8a6d1d"], STO: ["Stole", "box", "#4b6a88"] };
-const CITIES = { LKO: ["Lucknow", 80.95, 26.85], KNP: ["Kanpur", 80.35, 26.45], VNS: ["Varanasi", 82.99, 25.32], GKP: ["Gorakhpur", 83.37, 26.76], AGR: ["Agra", 78.01, 27.18],
-  PAT: ["Patna", 85.14, 25.6], GAY: ["Gaya", 85.0, 24.8], MZF: ["Muzaffarpur", 85.39, 26.12], BGP: ["Bhagalpur", 87.0, 25.24],
-  BLR: ["Bengaluru", 77.59, 12.97], MYS: ["Mysuru", 76.64, 12.3], HUB: ["Hubballi", 75.12, 15.36], MNG: ["Mangaluru", 74.85, 12.91], BEL: ["Belagavi", 74.5, 15.85] };
-const OUTLINE = [[68.2,23.7],[70.5,20.8],[72.8,19.1],[73.9,15.3],[74.9,12.8],[76.3,9.6],[77.5,8.1],[78.2,9],[79.9,10.3],[80.3,13.1],[80,15.6],[82.3,17],[85,19.7],[87,21.5],[88.7,21.8],[89.1,26.3],[92,25.8],[94.5,27.2],[97,28],[95.5,29.2],[92,27.8],[88,27.9],[84,28.8],[81,30.2],[79,32.5],[78,35.3],[75,36.8],[74,34.5],[74.5,32.5],[74,30.5],[71,28],[70.5,25]];
 
-/* ---------- built-in demo data: used when the stores / inventory collections are empty ---------- */
+/* ---------- Kolkata geography: neighbourhoods, map box, river ---------- */
+const NEIGH = [["Salt Lake", 88.41, 22.58], ["Park Street", 88.36, 22.55], ["New Town", 88.48, 22.59], ["Howrah", 88.32, 22.59], ["Garia", 88.38, 22.46], ["Behala", 88.32, 22.50],
+  ["Dum Dum", 88.40, 22.64], ["Ballygunge", 88.365, 22.52], ["Tollygunge", 88.35, 22.49], ["Shyambazar", 88.37, 22.60], ["Jadavpur", 88.37, 22.50], ["Rajarhat", 88.44, 22.62]];
+const BB = { x0: 88.25, x1: 88.52, y0: 22.43, y1: 22.68 };
+const RIVER = [[88.372, 22.68], [88.362, 22.64], [88.352, 22.605], [88.346, 22.585], [88.335, 22.555], [88.318, 22.53], [88.30, 22.50], [88.295, 22.46], [88.29, 22.43]];
+const MX = l => (l - BB.x0) / (BB.x1 - BB.x0) * 500, MY = l => (BB.y1 - l) / (BB.y1 - BB.y0) * 500;
+
+/* ---------- demo data (used only when the stores / inventory collections are empty) ---------- */
 const DEMO = (() => {
   const T = { "S++": 1.6, "S+": 1.2, A: .9, B: .6 };
-  const stores = [["LKO-01","Lucknow",80.95,26.85,"S++",1200],["LKO-02","Lucknow",80.95,26.85,"S+",900],["LKO-03","Lucknow",80.95,26.85,"A",600],["LKO-04","Lucknow",80.95,26.85,"B",450],
-    ["KNP-01","Kanpur",80.35,26.45,"S+",800],["KNP-02","Kanpur",80.35,26.45,"A",600],["KNP-03","Kanpur",80.35,26.45,"B",420],
-    ["PAT-01","Patna",85.14,25.6,"S++",1100],["PAT-02","Patna",85.14,25.6,"S+",850],["PAT-03","Patna",85.14,25.6,"A",600],["PAT-04","Patna",85.14,25.6,"B",430],
-    ["GAY-01","Gaya",85.0,24.8,"A",580],["GAY-02","Gaya",85.0,24.8,"B",400],
-    ["BLR-01","Bengaluru",77.59,12.97,"S++",1300],["BLR-02","Bengaluru",77.59,12.97,"S+",950],["BLR-03","Bengaluru",77.59,12.97,"A",650],["BLR-04","Bengaluru",77.59,12.97,"B",450],
-    ["MYS-01","Mysuru",76.64,12.3,"S+",780],["MYS-02","Mysuru",76.64,12.3,"A",560],["MYS-03","Mysuru",76.64,12.3,"B",400]].map(([id, city, lng, lat, tier, capacity]) => ({ id, city, lng, lat, tier, capacity }));
-  const skus = [["KUR-02-L",6799],["KUR-05-M",5499],["KUR-12-XL",6799],["KUR-08-S",4999],["SHE-01-L",24999],["SHE-03-XL",19999],["IND-04-M",14999],["JAC-03-L",8999],["MOJ-01-9",2199],["MOJ-02-8",2499],["SAF-01-FS",1299],["STO-02-FS",1999]];
+  const stores = [["KOL-01", 0, "S++", 1200], ["KOL-02", 1, "S++", 1100], ["KOL-03", 2, "S+", 900], ["KOL-04", 3, "A", 600], ["KOL-05", 4, "S+", 850], ["KOL-06", 5, "A", 600],
+    ["KOL-07", 6, "B", 450], ["KOL-08", 7, "S+", 800], ["KOL-09", 8, "A", 580], ["KOL-10", 9, "B", 430], ["KOL-11", 10, "A", 560], ["KOL-12", 11, "B", 400]]
+    .map(([id, n, tier, capacity]) => ({ id, city: NEIGH[n][0], lng: NEIGH[n][1], lat: NEIGH[n][2], tier, capacity }));
+  const skus = [["KUR-02-L", 6799], ["KUR-05-M", 5499], ["KUR-12-XL", 6799], ["KUR-08-S", 4999], ["SHE-01-L", 24999], ["SHE-03-XL", 19999], ["IND-04-M", 14999], ["JAC-03-L", 8999], ["MOJ-01-9", 2199], ["MOJ-02-8", 2499], ["SAF-01-FS", 1299], ["STO-02-FS", 1999]];
   let seed = 7; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   const inv = [];
   stores.forEach(st => skus.forEach(([sku, mrp]) => {
@@ -209,8 +201,7 @@ const DEMO = (() => {
   }));
   return { stores, inv };
 })();
-const S = { user: null, role: null, tab: "", store: "all", moves: [], findings: [], rules: [], calendar: [], data_guide: [], brief: [], stores: [], inventory: [], unsubs: [],
-  t0: null, doneAt: null, f: { store: "all", cat: "all", st: "all" }, city: null, xpSeen: null, lvlSeen: null, celebrated: false };
+const S = { user: null, role: null, tab: "", store: "all", moves: [], findings: [], data_guide: [], brief: [], stores: [], inventory: [], unsubs: [], f: { store: "all", cat: "all", st: "all" }, sel: null };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const ic = (n, st = "") => `<svg class="ic" ${st ? `style="${st}"` : ""}><use href="#i-${n}"/></svg>`;
@@ -219,20 +210,20 @@ const day = n => new Date(PLAN + n * 864e5).toLocaleDateString("en-IN", { day: "
 const num = n => Math.round(n * 10) / 10;
 const cov = (on, vel) => vel > 0 ? on / vel : Infinity;
 const dd = d => isFinite(d) ? `${num(d)} days` : "no recent sales";
-const safe = (fn) => { try { return fn(); } catch (e) { console.error(e); return `<div class="empty">Something went wrong on this screen: ${esc(e.message)}</div>`; } };
-const demoNote = () => S.inventory.length ? "" : `<p class="sum">${ic("alert")} Demo data: the inventory collection is empty, so this shows 20 sample stores in 6 cities.</p>`;
+const safe = fn => { try { return fn(); } catch (e) { console.error(e); return `<div class="empty">Something went wrong on this screen: ${esc(e.message)}</div>`; } };
+const demoNote = () => S.inventory.length ? "" : `<p class="sum">${ic("alert")} Demo data: the inventory collection is empty, so this shows 12 sample Kolkata stores.</p>`;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 4000); }
 const ls = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k + S.user.uid) ?? "null") ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k + S.user.uid, JSON.stringify(v)); } catch {} } };
 const getSeen = () => ls.get("sm-seen-", []);
 const catOf = sku => CATS[String(sku).slice(0, 3).toUpperCase()] || ["Other", "box", "#6b5f56"];
-const artTile = sku => { const c = catOf(sku); return `<div class="art" style="--c:${c[2]}" title="${c[0]}"><svg><use href="#a-${c[1]}"/></svg></div>`; };
+const artTile = (sku, img, cls = "") => { const c = catOf(sku); return `<div class="art ${cls}" style="--c:${c[2]}" title="${c[0]}"><svg><use href="#a-${c[1]}"/></svg>${img ? `<img src="${esc(img)}" alt="${esc(sku)}" loading="lazy" onerror="this.remove()">` : ""}</div>`; };
 
-/* ---------- move logic ---------- */
+/* ---------- move logic: rules are enforced here, a move that breaks one cannot be approved ---------- */
 const avail = m => { const e = m.evidence || {}; return m.type === "wh_store" ? e.whAvail : m.type === "store_store" ? e.srcOnHand : e.onHand; };
 function check(m) {
   const e = m.evidence || {}, v = [], k = [], add = (c, t) => { k.push(c); v.push(t); };
-  if (m.type === "store_store" && e.srcVel) { const a = (e.srcOnHand - m.qty) / e.srcVel; if (a < MIN_COVER) add("cover", `the giving store would keep only ${Math.floor(a)} days of stock (needs ${MIN_COVER})`); }
-  if (m.type === "store_store" && e.protectedStyle) add("prot", "this is a protected top-20 style at a flagship store");
+  if (m.type === "store_store" && !m.exception && e.srcVel) { const a = (e.srcOnHand - m.qty) / e.srcVel; if (a < MIN_COVER) add("cover", `the giving store would keep only ${Math.floor(a)} days of stock (needs ${MIN_COVER})`); }
+  if (m.type === "store_store" && e.protectedStyle) add("prot", "protected top-20 style at a flagship store");
   if (m.type === "store_store" && e.srcMinDisplay != null && e.srcCategoryAfter != null && e.srcCategoryAfter < e.srcMinDisplay) add("disp", "the giving store would drop below its minimum display");
   if (m.type !== "pull_back" && e.cap && e.dstUnits + m.qty > e.cap) add("cap", `the store would hold ${e.dstUnits + m.qty} of ${e.cap} it can fit`);
   if (m.type === "pull_back" && e.inStock28 < 14) add("zero", "zero sales with few days in stock means unavailable, not slow");
@@ -254,7 +245,7 @@ function reason(m) {
 }
 function facts(m) {
   const e = m.evidence || {}, p = [];
-  if (m.type === "wh_store") p.push(e.vel ? `Sells ${e.vel} a day (velocity)` : "New store, not enough sales history yet", e.vel ? `stock lasts ${num(e.onHand / e.vel)} days (cover)` : null, e.inTransit ? `${e.inTransit} already on the way` : null);
+  if (m.type === "wh_store") p.push(e.vel ? `Sells ${e.vel} a day` : "New store, not enough sales history yet", e.vel ? `stock lasts ${num(e.onHand / e.vel)} days` : null, e.inTransit ? `${e.inTransit} already on the way` : null);
   if (m.type === "store_store") p.push(`Receiving store sells ${e.dstVel || 0} a day, stock lasts ${dd(cov(e.dstOnHand, e.dstVel))}`, `giving store sells ${e.srcVel || 0} a day and keeps ${dd(cov(e.srcOnHand - m.qty, e.srcVel))} after the move`);
   if (m.type === "pull_back") p.push(`${e.ageDays} days old`, `${e.sold28} sold in 28 days`, `in stock ${e.inStock28} of 28 days`);
   if (e.lead != null) p.push(`arrives in ${e.lead} day${e.lead === 1 ? "" : "s"} (${day(e.lead)})`);
@@ -263,7 +254,7 @@ function facts(m) {
 const urgent = m => { const e = m.evidence || {}; return m.type === "wh_store" && ((e.vel && e.onHand / e.vel < 7) || (e.minDisplay && e.onHand < e.minDisplay)); };
 const rank = m => (urgent(m) ? 2e9 : 0) + (check(m).v.length ? 1e9 : 0) + m.qty * (m.mrp || 0);
 
-/* ---------- prediction: stock left day by day, with and without the move ---------- */
+/* ---------- forecast: stock left day by day, with and without the move ---------- */
 function forecast(m) {
   const e = m.evidence || {}, lead = e.lead ?? 1, inT = e.inTransit || 0, up = e.festival ? FEST_UPLIFT : 1;
   let on, vel;
@@ -283,41 +274,52 @@ function spark(f) {
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Stock forecast for 14 days"><line x1="0" y1="${H - 4}" x2="${W}" y2="${H - 4}" stroke="#cfc3ad" stroke-dasharray="3"/>
   <polyline fill="none" stroke="#b3261e" stroke-width="2" points="${pt(f.a)}"/><polyline fill="none" stroke="#2f6f43" stroke-width="2.5" points="${pt(f.b)}"/></svg>`;
 }
-const outTxt = (o, withIt) => o === null ? `lasts ${HORIZON}+ days` : `runs out in ${o} day${o === 1 ? "" : "s"} (${day(o)})`;
+const outTxt = o => o === null ? `lasts ${HORIZON}+ days` : `runs out in ${o} day${o === 1 ? "" : "s"} (${day(o)})`;
+const LEGEND = `Chart: <b style="color:#b3261e">red</b> is stock left without the move, <b style="color:#2f6f43">green</b> is stock left with it, over the next ${HORIZON} days. The dashed line is zero stock.`;
 
-/* ---------- inventory (from the inventory collection, or derived from the moves' evidence) ---------- */
-function inventory() {
-  if (S.inventory.length) return S.inventory.map(r => ({ store: r.store, sku: r.sku, onHand: r.onHand || 0, inTransit: r.inTransit || 0, vel: r.vel || 0, age: r.ageDays || 0, sold28: r.sold28 ?? Math.round((r.vel || 0) * 28), mrp: r.mrp || 0 }));
-  return DEMO.inv;
-  const map = new Map(), put = (store, sku, o) => { const k = store + "|" + sku; map.set(k, { age: 0, inTransit: 0, ...map.get(k), store, sku, ...o }); };
+/* ---------- live inventory: the snapshot plus every approved move, rebuilt on each database change ---------- */
+let INV = null;
+const inventory = () => INV || (INV = buildInv());
+function buildInv() {
+  const demo = !S.inventory.length;
+  const base = demo ? DEMO.inv.map(r => ({ ...r, img: "" })) : S.inventory.map(r => ({ store: r.store, sku: r.sku, onHand: r.onHand || 0, inTransit: r.inTransit || 0, vel: r.vel || 0, age: r.ageDays || 0, sold28: r.sold28 ?? Math.round((r.vel || 0) * 28), mrp: r.mrp || 0, img: r.image || r.img || "" }));
+  const map = new Map(base.map(r => [r.store + "|" + r.sku, r]));
+  const row = (st, sku, m, vel) => {
+    if (demo && !DEMO.stores.some(s => s.id === st)) return { onHand: 0 };
+    const k = st + "|" + sku; let r = map.get(k);
+    if (!r) { r = { store: st, sku, onHand: 0, inTransit: 0, vel: vel || 0, age: 0, sold28: Math.round((vel || 0) * 28), mrp: m.mrp || 0, img: "" }; map.set(k, r); } return r;
+  };
   for (const m of S.moves) {
-    const e = m.evidence || {};
-    if (m.type === "wh_store" && e.onHand != null) put(m.to, m.sku, { onHand: e.onHand, vel: e.vel || 0, inTransit: e.inTransit || 0, sold28: Math.round((e.vel || 0) * 28), mrp: m.mrp });
-    if (m.type === "store_store") { if (e.dstOnHand != null) put(m.to, m.sku, { onHand: e.dstOnHand, vel: e.dstVel || 0, sold28: Math.round((e.dstVel || 0) * 28), mrp: m.mrp }); if (e.srcOnHand != null) put(m.from, m.sku, { onHand: e.srcOnHand, vel: e.srcVel || 0, sold28: Math.round((e.srcVel || 0) * 28), mrp: m.mrp }); }
-    if (m.type === "pull_back" && e.onHand != null) put(m.from, m.sku, { onHand: e.onHand, vel: (e.sold28 || 0) / 28, age: e.ageDays || 0, sold28: e.sold28 || 0, mrp: m.mrp });
+    if (m.status !== "approved") continue; const e = m.evidence || {};
+    if (m.type === "wh_store") row(m.to, m.sku, m, e.vel).onHand += m.qty;
+    else if (m.type === "store_store") { const s = row(m.from, m.sku, m, e.srcVel); s.onHand = Math.max(0, s.onHand - m.qty); row(m.to, m.sku, m, e.dstVel).onHand += m.qty; }
+    else { const s = row(m.from, m.sku, m, 0); s.onHand = Math.max(0, s.onHand - m.qty); }
   }
   return [...map.values()];
 }
 const health = r => { const c = cov(r.onHand, r.vel); return c < 14 ? "hot" : (c > SLOW_COVER || (r.age > 60 && r.sold28 <= 2)) && r.onHand > 0 ? "slow" : "ok"; };
 const HL = { hot: ["Running low", "hot"], slow: ["Not selling", "slow"], ok: ["Healthy", "okp"] };
 const storesList = () => S.stores.length ? S.stores : DEMO.stores;
-const cityOf = id => { const s = storesList().find(x => x.id === id), p = String(id).split("-")[0].toUpperCase(), c = CITIES[p];
-  return { name: s?.city || c?.[0] || p, lng: s?.lng ?? c?.[1] ?? null, lat: s?.lat ?? c?.[2] ?? null, tier: s?.tier || "", cap: s?.capacity || 0 }; };
-function storeAgg(inv) {
-  const g = {};
-  inv.forEach(r => { const a = g[r.store] ||= { id: r.store, units: 0, value: 0, hot: 0, slow: 0, ok: 0, rows: [], ...cityOf(r.store) }; a.units += r.onHand; a.value += r.onHand * r.mrp; a[health(r)]++; a.rows.push(r); });
-  return Object.values(g).sort((x, y) => x.id.localeCompare(y.id));
+function placeOf(id, ids) {
+  const s = storesList().find(x => x.id === id), n = NEIGH[Math.max(0, ids.indexOf(id)) % NEIGH.length];
+  const ok = s && s.lng >= BB.x0 && s.lng <= BB.x1 && s.lat >= BB.y0 && s.lat <= BB.y1;
+  return { area: ok ? (s.area || s.city || n[0]) : n[0], lng: ok ? s.lng : n[1], lat: ok ? s.lat : n[2], tier: s?.tier || "", cap: s?.capacity || 0 };
 }
+function storeAgg(inv) {
+  const ids = [...new Set([...storesList().map(s => s.id), ...inv.map(r => r.store)])].sort(), g = {};
+  ids.forEach(id => g[id] = { id, units: 0, value: 0, hot: 0, slow: 0, ok: 0, rows: [], ...placeOf(id, ids) });
+  inv.forEach(r => { const a = g[r.store]; a.units += r.onHand; a.value += r.onHand * r.mrp; if (r.onHand > 0 || r.vel > 0) a[health(r)]++; a.rows.push(r); });
+  return ids.map(i => g[i]);
+}
+const chips = a => `<span class="hc hot" title="Running low"><i></i>${a.hot}</span><span class="hc slow" title="Not selling"><i></i>${a.slow}</span><span class="hc ok" title="Healthy"><i></i>${a.ok}</span>`;
 
-/* ---------- sign in, switch account, role ---------- */
+/* ---------- sign in, role ---------- */
 const provider = () => { const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: "select_account" }); return p; };
 async function signIn() { try { await signInWithPopup(auth, provider()); } catch (e) { toast(e.code === "auth/popup-closed-by-user" ? "Sign-in cancelled." : "Sign-in failed: " + (e.code || e.message)); } }
-$("googleBtn").onclick = signIn;
-$("switchBtn").onclick = signIn;   // account chooser. A Google account with no profile is asked for a role, so each account can have its own.
-$("signOut").onclick = () => signOut(auth);
+$("googleBtn").onclick = signIn; $("switchBtn").onclick = signIn; $("signOut").onclick = () => signOut(auth);
 let authRun = 0;
 onAuthStateChanged(auth, async user => {
-  const run = ++authRun; stopListening(); S.user = user; S.role = null; S.t0 = S.doneAt = null; S.xpSeen = S.lvlSeen = null; S.celebrated = false; S.city = null;
+  const run = ++authRun; stopListening(); S.user = user; S.role = null; S.sel = null;
   if ($("roleDlg").open) $("roleDlg").close();
   if (!user) { $("loginView").hidden = false; $("appView").hidden = true; $("who").hidden = true; return; }
   $("loginView").hidden = true; $("who").hidden = false; $("appView").hidden = true;
@@ -330,7 +332,7 @@ onAuthStateChanged(auth, async user => {
 });
 function askRole() {
   $("roleWho").textContent = `Signed in as ${S.user.email}. This decides what you see. You choose once for this account.`;
-  $("roleOpts").innerHTML = Object.entries(ROLES).map(([k, [l, b, i]], n) => `<label class="roleopt"><input type="radio" name="role" value="${k}" ${n ? "" : "checked"}>${ic(i, "width:26px;height:26px")}<div><b>${l}</b><span>${b}</span></div></label>`).join("");
+  $("roleOpts").innerHTML = Object.entries(ROLES).map(([k, [l, b, i]], n) => `<label class="roleopt"><input type="radio" name="role" value="${k}" ${n ? "" : "checked"}>${ic(i, "width:24px;height:24px")}<div><b>${l}</b><span>${b}</span></div></label>`).join("");
   if (!$("roleDlg").open) $("roleDlg").showModal();
 }
 $("roleDlg").addEventListener("cancel", e => e.preventDefault());
@@ -341,100 +343,59 @@ $("roleForm").onsubmit = async e => {
     S.role = role; $("roleDlg").close(); startApp(); }
   catch (err) { toast("Could not save your role: " + (err.code || err.message)); }
 };
-
+const COLS = ["moves", "findings", "data_guide", "brief", "stores", "inventory"];
 function startApp() {
   $("appView").hidden = false; $("rolechip").textContent = ROLES[S.role][0];
   S.tab = { warehouse: "pick", area_manager: "alerts", regional_manager: "network" }[S.role] || "today";
-  const today = new Date().toISOString().slice(0, 10), st = ls.get("sm-streak-", { last: "", n: 0 });
-  if (st.last !== today) { st.n = st.last === new Date(Date.now() - 864e5).toISOString().slice(0, 10) ? st.n + 1 : 1; st.last = today; ls.set("sm-streak-", st); }
-  for (const k of ["moves", "findings", "rules", "calendar", "data_guide", "brief", "stores", "inventory"])
-    S.unsubs.push(onSnapshot(collection(db, k), snap => {
+  for (const k of COLS)
+    S.unsubs.push(onSnapshot(collection(db, k), snap => {   // live: every change anywhere re-renders this screen
       S[k] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      if (k === "moves") { S.moves.sort((a, b) => rank(b) - rank(a)); if (!S.t0 && S.moves.length) S.t0 = Date.now(); }
+      if (k === "moves") S.moves.sort((a, b) => rank(b) - rank(a));
       render();
     }, err => { if (!["stores", "inventory"].includes(k)) toast(`Could not load ${k}: ${err.code || err.message}`); }));
   render();
 }
-function stopListening() { S.unsubs.forEach(u => u()); S.unsubs = []; for (const k of ["moves", "findings", "rules", "calendar", "data_guide", "brief", "stores", "inventory"]) S[k] = []; }
+function stopListening() { S.unsubs.forEach(u => u()); S.unsubs = []; for (const k of COLS) S[k] = []; INV = null; }
 
-/* ---------- game: XP, levels, streak, badges (all roles) ---------- */
-function xpState() {
-  const me = S.user.email, mine = S.moves.filter(m => m.status !== "proposed" && m.decidedBy === me), total = S.moves.length, decided = S.moves.filter(m => m.status !== "proposed").length, done = total > 0 && decided === total;
-  const secs = S.t0 ? Math.floor(((S.doneAt || Date.now()) - S.t0) / 1000) : 0, seen = getSeen().filter(id => S.findings.some(f => f.id === id)).length;
-  const picks = ls.get("sm-picks-", []).filter(id => S.moves.some(m => m.id === id)), relocs = S.moves.filter(m => m.createdBy === me).length, cities = ls.get("sm-cities-", []);
-  const urgAll = S.moves.filter(urgent), urgDone = urgAll.length > 0 && urgAll.every(m => m.status !== "proposed");
-  let pts = seen * 5, b = [], R = S.role;
-  if (R === "merchandiser") { pts += mine.reduce((a, m) => a + (m.status === "approved" ? 10 + (m.urgent ? 5 : 0) : 5), 0) + (done ? 20 : 0);
-    b = [["bolt", "First decision", mine.length > 0], ["target", "Halfway there", total > 0 && decided / total >= .5], ["flame", "Urgent hero: every urgent move decided", urgDone], ["trophy", "List cleared", done],
-      ["clock", "Speed star: under 10 minutes", done && secs <= GOAL_SECS], ["shield", "Rule keeper: nothing risky approved", done && !S.moves.some(m => m.status === "approved" && check(m).v.length)]]; }
-  else if (R === "warehouse") { pts += picks.length * 5; const apr = S.moves.filter(m => m.type === "wh_store" && m.status === "approved").length;
-    b = [["box", "First pick", picks.length > 0], ["truck", "Half the list picked", apr > 0 && picks.length / apr >= .5], ["trophy", "Pick list cleared", apr > 0 && picks.length >= apr]]; }
-  else if (R === "area_manager") { pts += alertList().length * 2;
-    b = [["shield", "Alert reader", alertList().length > 0], ["alert", "Calm inbox: alerts within your limit of " + AM_ALERTS, alertList().length <= AM_ALERTS]]; }
-  else { pts += relocs * 15 + cities.length * 3;
-    b = [["pin", "Map explorer: opened 3 cities", cities.length >= 3], ["swap", "First rescue: relocated slow stock", relocs >= 1], ["medal", "Rescue five", relocs >= 5]]; }
-  b.push(["search", "Problem spotter: checked every finding", S.findings.length > 0 && seen === S.findings.length]);
-  return { pts, b, done, total, decided, secs };
-}
-function game() {
-  const x = xpState(), pts = x.pts, li = LEVELS.map(l => l[0]).filter(n => pts >= n).length - 1, lvl = LEVELS[li], next = LEVELS[li + 1], pct = next ? (pts - lvl[0]) / (next[0] - lvl[0]) : 1;
-  if (S.role === "merchandiser") { if (x.done && !S.doneAt) S.doneAt = Date.now(); if (!x.done) S.doneAt = null; }
-  if (S.xpSeen !== null && pts > S.xpSeen) { xpPop(`+${pts - S.xpSeen} XP`); if (li > S.lvlSeen) { toast(`Level up: ${lvl[1]}!`); confetti(); } }
-  if (x.done && S.role === "merchandiser" && !S.celebrated) { S.celebrated = true; if (S.xpSeen !== null) confetti(); } if (!x.done) S.celebrated = false;
-  S.xpSeen = pts; S.lvlSeen = li;
-  const C = 2 * Math.PI * 40, st = ls.get("sm-streak-", { n: 1 });
-  const tm = S.role === "merchandiser" ? `<span id="timer" style="margin-left:auto;font-weight:700"></span>` : "";
-  return `<div class="game"><div class="ring"><svg viewBox="0 0 92 92"><circle cx="46" cy="46" r="40" fill="none" stroke="#eadfc9" stroke-width="9"/><circle cx="46" cy="46" r="40" fill="none" stroke="#d9801f" stroke-width="9" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}"/></svg><div class="c"><div>${ic("star")}<br>${li + 1}<small>level</small></div></div></div>
-    <div><div class="gtop"><b>${lvl[1]}</b><span>${pts} XP${next ? `, ${next[0] - pts} to ${next[1]}` : ""}</span><span class="streak">${ic("flame")} ${st.n} day streak</span>${S.role === "merchandiser" ? `<span>${x.decided} of ${x.total} moves decided</span>` : ""}${tm}</div>
-    ${S.role === "merchandiser" ? `<div class="bar"><i style="width:${x.total ? Math.round(x.decided / x.total * 100) : 0}%"></i></div>` : ""}
-    <div class="badges">${x.b.map(([i, n, g]) => `<span class="badge ${g ? "got" : ""}">${ic(i)}${g ? "Earned: " : ""}${n}</span>`).join("")}</div></div></div>`;
-}
-function xpPop(t) { const d = document.createElement("div"); d.className = "xp"; d.textContent = t; document.body.append(d); setTimeout(() => d.remove(), 1700); }
-function confetti() { const cols = ["#d9801f", "#6e1f2b", "#2f6f68", "#e0b04a", "#2f6f43"]; for (let i = 0; i < 60; i++) { const d = document.createElement("i"); d.className = "cf"; d.style.cssText = `left:${Math.random() * 100}vw;background:${cols[i % 5]};animation-delay:${Math.random() * .6}s`; document.body.append(d); setTimeout(() => d.remove(), 3200); } }
-function tick() {
-  const el = $("timer"); if (!el) return;
-  const secs = S.t0 ? Math.floor(((S.doneAt || Date.now()) - S.t0) / 1000) : 0, m = n => String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
-  el.innerHTML = ic("clock") + " " + (S.doneAt ? `Cleared in ${m(secs)}` : secs <= GOAL_SECS ? `${m(GOAL_SECS - secs)} left in the 10-minute challenge` : `${m(secs - GOAL_SECS)} over the 10-minute goal`);
-}
-setInterval(tick, 1000);
-
-/* ---------- banner art ---------- */
-function banner(text) {
-  const icon = ROLES[S.role][2];
-  return `<div class="banner"><p>${text}</p><svg class="art" viewBox="0 0 150 110" aria-hidden="true"><g fill="none" stroke-width="5" stroke-linecap="round"><path d="M10 110V60a65 65 0 0 1 130 0v50" stroke="#e3cf9e"/><path d="M26 110V62a49 49 0 0 1 98 0v48" stroke="#e8a977"/><path d="M42 110V64a33 33 0 0 1 66 0v46" stroke="#8fb0a8"/><path d="M58 110V66a17 17 0 0 1 34 0v44" stroke="#c4958f"/></g>
-  <g stroke="#6e1f2b" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="translate(63 60) scale(1)"><use href="#i-${icon}" width="24" height="24"/></g></svg></div>`;
+/* ---------- header area ---------- */
+const banner = t => `<div class="banner"><p>${t}</p></div>`;
+function progress() {
+  if (S.role !== "merchandiser" || !S.moves.length) return "";
+  const t = S.moves.length, d = S.moves.filter(m => m.status !== "proposed").length;
+  return `<div class="prog"><span>${d} of ${t} moves decided</span><div class="bar"><i style="width:${Math.round(d / t * 100)}%"></i></div></div>`;
 }
 
 /* ---------- views ---------- */
-const COMMON = [["findings", "Hidden problems", "search"], ["rules", "Rules and calendar", "book"], ["check", "Hackathon check", "shield"], ["about", "About the data", "grid"]];
+const COMMON = [["findings", "Hidden problems", "search"], ["about", "About the data", "grid"]];
 function tabs() {
-  return { warehouse: [["pick", "Pick list", "truck"], ["returns", "Coming back", "undo"], ...COMMON.slice(1)],
+  return { warehouse: [["pick", "Pick list", "truck"], ["returns", "Coming back", "undo"], ...COMMON],
     area_manager: [["alerts", "My alerts", "alert"], ["all", "All moves", "list"], ...COMMON],
     regional_manager: [["network", "Map and stores", "pin"], ["inv", "All inventory", "box"], ["perf", "Performance", "up"], ...COMMON],
     merchandiser: [["today", "Today's moves", "check"], ["fc", "Stock forecast", "down"], ...COMMON] }[S.role];
 }
 function render() {
-  if (!S.role) return;
+  if (!S.role) return; INV = null;
   const ms = S.moves, units = ms.reduce((a, m) => a + m.qty, 0), val = ms.reduce((a, m) => a + m.qty * (m.mrp || 0), 0);
   const care = ms.filter(m => check(m).approval || check(m).v.length).length, urg = ms.filter(urgent).length;
-  const heroTxt = { regional_manager: () => { const a = storeAgg(inventory()); return a.length ? `${a.length} stores in view. ${a.reduce((s, x) => s + x.slow, 0)} stock lines are not selling and ${a.reduce((s, x) => s + x.hot, 0)} are running low.` : "No inventory to show yet."; } }[S.role];
-  $("hero").innerHTML = banner(heroTxt ? heroTxt() : ms.length ? `Today there are ${ms.length} suggested moves, ${units} units worth ${inr(val)}. ${urg ? `${urg} ${urg === 1 ? "is" : "are"} urgent and need a shipment approval. ` : ""}${care ? `${care} need${care === 1 ? "s" : ""} a careful look.` : "None need extra care."}` : "No moves yet. They appear here as soon as the engine writes them.");
-  $("game").innerHTML = safe(game);
+  let txt;
+  if (S.role === "regional_manager") { const a = storeAgg(inventory()); txt = a.length ? `${a.length} stores in view. ${a.reduce((s, x) => s + x.slow, 0)} stock lines are not selling and ${a.reduce((s, x) => s + x.hot, 0)} are running low.` : "No inventory to show yet."; }
+  else txt = ms.length ? `Today there are ${ms.length} suggested moves, ${units} units worth ${inr(val)}. ${urg ? `${urg} ${urg === 1 ? "is" : "are"} urgent. ` : ""}${care ? `${care} need${care === 1 ? "s" : ""} a careful look.` : "None need extra care."}` : "No moves yet. They appear here as soon as the engine writes them.";
+  $("hero").innerHTML = banner(txt); $("game").innerHTML = progress();
   $("tabs").innerHTML = tabs().map(([k, l, i]) => `<button class="tab" role="tab" aria-selected="${S.tab === k}" data-tab="${k}">${ic(i)}${l}</button>`).join("");
-  const v = { today: () => today(true), all: () => today(false), alerts, pick, returns, findings, rules, about, check: hackCheck, fc: fcView, network, inv: invView, perf }[S.tab] || (() => "");
-  $("panel").innerHTML = safe(v); wire(); tick();
+  const v = { today: () => today(true), all: () => today(false), alerts, pick, returns, findings, about, fc: fcView, network, inv: invView, perf }[S.tab] || (() => "");
+  $("panel").innerHTML = safe(v); wire();
 }
 function moveCard(m, edit) {
   const c = check(m), u = urgent(m), q = edit && m.status === "proposed" ? `<input class="qty" type="number" min="1" max="${avail(m) ?? ""}" value="${m.qty}" data-qty="${esc(m.id)}" aria-label="Quantity">` : m.qty;
   const verb = m.type === "pull_back" ? "Bring back" : m.type === "store_store" ? "Move" : "Send", f = m.type !== "pull_back" ? forecast(m) : null;
-  const tags = [u ? `<span class="tag bad">${ic("flame")} urgent: shipment approval needed</span>` : "", c.approval && !m.exception ? `<span class="tag warn">over Rs 1 lakh, needs approval</span>` : "",
-    m.exception ? `<span class="tag warn">exception: ${esc(m.exception)}</span>` : "", ...c.v.map(x => `<span class="tag bad">${ic("alert")} rule broken: ${esc(x)}</span>`), c.v.length ? "" : `<span class="tag good">${ic("check")} all rules pass</span>`,
-    f ? `<span class="tag ${f.outA !== null && f.outA <= 7 ? "bad" : ""}">${ic("down")} without this move: ${outTxt(f.outA)}</span>` : "", m.skipReason ? `<span class="tag">skipped: ${esc(m.skipReason)}</span>` : ""].join("");
+  const tags = [u ? `<span class="tag bad">${ic("flame")} urgent</span>` : "", c.approval && !m.exception ? `<span class="tag warn">over Rs 1 lakh, needs approval</span>` : "",
+    m.exception ? `<span class="tag warn">${esc(m.exception)}</span>` : "", ...c.v.map(x => `<span class="tag bad">${ic("alert")} blocked: ${esc(x)}</span>`),
+    f ? `<span class="tag ${f.outA !== null && f.outA <= 7 ? "bad" : ""}">${ic("down")} without it: ${outTxt(f.outA)}</span>` : "", m.skipReason ? `<span class="tag">skipped: ${esc(m.skipReason)}</span>` : ""].join("");
   const act = !edit ? `<span class="tag ${m.status === "approved" ? "good" : ""}">${m.status === "proposed" ? "waiting" : esc(m.status)}</span>` : m.status === "proposed"
-    ? `<button class="btn sm ${u ? "urg" : "ok"}" data-approve="${esc(m.id)}">${ic(u ? "flame" : "check")}${u ? "Approve urgent shipment" : "Approve"}</button><button class="btn sm" data-skip="${esc(m.id)}">${ic("skip")}Skip</button>`
+    ? `<button class="btn sm ${u ? "urg" : "ok"}" data-approve="${esc(m.id)}" ${c.v.length ? 'disabled title="Blocked by a store rule"' : ""}>${ic(u ? "flame" : "check")}${u ? "Approve urgent" : "Approve"}</button><button class="btn sm" data-skip="${esc(m.id)}">${ic("skip")}Skip</button>`
     : `<span class="tag ${m.status === "approved" ? "good" : ""}">${esc(m.status)}</span><button class="btn sm" data-reset="${esc(m.id)}">${ic("undo")}Undo</button>`;
   return `<article class="mv ${m.type} ${c.v.length ? "bad" : ""} ${u ? "isurg" : ""} ${m.status === "skipped" ? "skipped" : ""}">${artTile(m.sku)}<div><div class="mvh"><span>${verb} ${q} x ${esc(m.sku)} <em>from ${esc(m.from)} to ${esc(m.to)}</em></span><span>${inr(c.value)}</span></div>
-    <p class="why">${esc(reason(m))}</p><p class="nums">${esc(facts(m))}</p><div>${tags}</div><div class="acts">${act}</div></div><div class="mvr">${f ? `${spark(f)}<div class="nums" style="margin:0">${f.on} now, with move: ${outTxt(f.outB)}</div>` : ""}</div></article>`;
+    <p class="why">${esc(reason(m))}</p><p class="nums">${esc(facts(m))}</p><div>${tags}</div><div class="acts">${act}</div></div><div class="mvr">${f ? `${spark(f)}<div class="nums" style="margin:0">${f.on} now, with it: ${outTxt(f.outB)}</div>` : ""}</div></article>`;
 }
 function grouped(list, edit) {
   return Object.entries(TYPES).map(([t, [name, i]]) => {
@@ -450,49 +411,43 @@ function today(edit) {
   const safeUrg = uq.filter(m => !check(m).v.length);
   return `<div class="tools"><label>Show store <select id="storeSel"><option value="all">All stores</option>${stores.map(s => `<option ${S.store === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label>
     ${edit ? `<span class="r"><button class="btn primary" id="approveRoutine" ${routine.length ? "" : "disabled"}>${ic("check")}Approve all ${routine.length} routine moves</button></span>` : ""}</div>
-    ${uq.length ? `<section class="urgq"><h3>${ic("flame")}Urgent shipments waiting for your approval</h3><p class="sum">These stores run out within a week or sit under minimum display. Sorted most urgent first.</p>
-      <div class="acts" style="margin-bottom:10px"><button class="btn urg" id="approveUrgent" ${safeUrg.length ? "" : "disabled"}>${ic("truck")}Approve ${safeUrg.length} urgent shipment${safeUrg.length === 1 ? "" : "s"} that pass all rules</button></div>${uq.map(m => moveCard(m, true)).join("")}</section>` : ""}
+    <p class="sum">${LEGEND}</p>
+    ${uq.length ? `<section class="urgq"><h3>${ic("flame")}Urgent shipments</h3><p class="sum">These stores run out within a week or sit under minimum display. Most urgent first.</p>
+      <div class="acts" style="margin-bottom:10px"><button class="btn urg" id="approveUrgent" ${safeUrg.length ? "" : "disabled"}>${ic("truck")}Approve ${safeUrg.length} urgent shipment${safeUrg.length === 1 ? "" : "s"}</button></div>${uq.map(m => moveCard(m, true)).join("")}</section>` : ""}
     ${rest.length ? grouped(rest, edit) : uq.length ? "" : `<div class="empty">No moves to show.</div>`}`;
 }
 function fcView() {
   const rows = S.moves.filter(m => m.type !== "pull_back").map(m => ({ m, f: forecast(m) })).sort((x, y) => (x.f.outA ?? 99) - (y.f.outA ?? 99));
   if (!rows.length) return `<div class="empty">No moves to forecast yet.</div>`;
   const risk = rows.filter(r => r.f.outA !== null && r.f.outA <= 7).length;
-  return `<p class="sum">Predicted stock left over the next ${HORIZON} days from each store's sales speed (velocity), stock on hand and what is on the way. Festival moves sell ${Math.round((FEST_UPLIFT - 1) * 100)}% faster. ${risk} stores run out within a week without a move.</p>
+  return `<p class="sum">Predicted stock from each store's sales speed, stock on hand and what is on the way. Festival moves sell ${Math.round((FEST_UPLIFT - 1) * 100)}% faster. ${risk} stores run out within a week without a move. ${LEGEND}</p>
   <div class="scroll"><table><tr><th>Store</th><th>SKU</th><th class="n">Now</th><th class="n">Sells / day</th><th>Without the move</th><th>With the move</th><th>Next 14 days</th><th>Flag</th></tr>${rows.map(({ m, f }) =>
-    `<tr><td>${esc(m.to)}</td><td>${esc(m.sku)}</td><td class="n">${f.on}</td><td class="n">${f.vel}${f.uplift ? " " + ic("up") : ""}</td><td>${outTxt(f.outA)}</td><td>${outTxt(f.outB)}</td><td>${spark(f)}</td>
-    <td>${urgent(m) ? `<span class="tag bad">${ic("flame")} urgent shipment</span>` : f.outA !== null && f.outA <= 14 ? `<span class="tag warn">watch</span>` : `<span class="tag good">fine</span>`}</td></tr>`).join("")}</table></div>`;
+    `<tr><td>${esc(m.to)}</td><td>${esc(m.sku)}</td><td class="n">${f.on}</td><td class="n">${f.vel}</td><td>${outTxt(f.outA)}</td><td>${outTxt(f.outB)}</td><td>${spark(f)}</td>
+    <td>${urgent(m) ? `<span class="tag bad">${ic("flame")} urgent</span>` : f.outA !== null && f.outA <= 14 ? `<span class="tag warn">watch</span>` : `<span class="tag good">fine</span>`}</td></tr>`).join("")}</table></div>`;
 }
 const alertList = () => S.moves.filter(m => m.status !== "skipped" && (urgent(m) || check(m).approval || check(m).v.length)).slice(0, AM_ALERTS);
-function alerts() { const top = alertList(); return `<p class="sum">You only read about ${AM_ALERTS} alerts a week, so these are the most important ones.</p>${top.length ? top.map(m => moveCard(m, false)).join("") : `<div class="empty">Nothing needs your attention right now.</div>`}`; }
+function alerts() { const top = alertList(); return `<p class="sum">The ${AM_ALERTS} most important alerts. Read-only: the merchandiser decides.</p>${top.length ? top.map(m => moveCard(m, false)).join("") : `<div class="empty">Nothing needs your attention right now.</div>`}`; }
 function pick() {
   const list = S.moves.filter(m => m.type === "wh_store" && m.status === "approved").sort((a, b) => (urgent(b) ? 1 : 0) - (urgent(a) ? 1 : 0) || (a.evidence?.lead ?? 9) - (b.evidence?.lead ?? 9)), done = ls.get("sm-picks-", []);
-  if (!list.length) return `<div class="empty">${ic("truck", "width:34px;height:34px")}<br>Nothing to pick yet. The merchandiser has not approved any warehouse dispatches.</div>`;
+  if (!list.length) return `<div class="empty">${ic("truck", "width:30px;height:30px")}<br>Nothing to pick yet. The merchandiser has not approved any warehouse dispatches.</div>`;
   const g = {}; list.forEach(m => (g[m.to] ||= []).push(m));
   return `<p class="sum">${list.length} lines, ${list.reduce((a, m) => a + m.qty, 0)} units to pick, for ${Object.keys(g).length} stores. ${list.filter(m => done.includes(m.id)).length} picked. Urgent shipments are on top.</p>` + Object.entries(g).sort((a, b) => b[1].some(urgent) - a[1].some(urgent) || a[0].localeCompare(b[0])).map(([s, ms]) =>
     `<section class="grp"><h3>${ic("store")}${esc(s)}${ms.some(urgent) ? ` <span class="tag bad">${ic("flame")} urgent</span>` : ""}</h3><div class="scroll"><table><tr><th></th><th>SKU</th><th class="n">Units to pick</th><th class="n">Arrives in (days)</th><th>Picked</th></tr>${ms.map(m =>
-    `<tr><td>${artTile(m.sku)}</td><td>${esc(m.sku)} ${urgent(m) ? ic("flame", "color:#b3261e") : ""}</td><td class="n">${m.qty}</td><td class="n">${esc(m.evidence?.lead ?? "")}</td><td><input type="checkbox" data-pick="${esc(m.id)}" ${done.includes(m.id) ? "checked" : ""} aria-label="Picked"></td></tr>`).join("")}</table></div></section>`).join("");
+    `<tr><td>${artTile(m.sku, "", "ph")}</td><td>${esc(m.sku)}</td><td class="n">${m.qty}</td><td class="n">${esc(m.evidence?.lead ?? "")}</td><td><input type="checkbox" data-pick="${esc(m.id)}" ${done.includes(m.id) ? "checked" : ""} aria-label="Picked"></td></tr>`).join("")}</table></div></section>`).join("");
 }
 function returns() {
   const l = S.moves.filter(m => m.type === "pull_back" && m.status === "approved");
-  return l.length ? `<div class="scroll"><table><tr><th></th><th>From store</th><th>SKU</th><th class="n">Units</th></tr>${l.map(m => `<tr><td>${artTile(m.sku)}</td><td>${esc(m.from)}</td><td>${esc(m.sku)}</td><td class="n">${m.qty}</td></tr>`).join("")}</table></div>` : `<div class="empty">No approved pull-backs are on their way back.</div>`;
+  return l.length ? `<div class="scroll"><table><tr><th></th><th>From store</th><th>SKU</th><th class="n">Units</th></tr>${l.map(m => `<tr><td>${artTile(m.sku, "", "ph")}</td><td>${esc(m.from)}</td><td>${esc(m.sku)}</td><td class="n">${m.qty}</td></tr>`).join("")}</table></div>` : `<div class="empty">No approved pull-backs are on their way back.</div>`;
 }
 function findings() {
   const grp = f => ["hold", "quarantine"].includes(f.action) ? 0 : ["exception", "move proposed"].includes(f.action) ? 1 : 2;
   const names = ["Check these first: possible data errors", "Stores to watch", "Good to know"], ico = ["alert", "pin", "star"], seen = getSeen();
   if (!S.findings.length) return `<div class="empty">No findings yet.</div>`;
-  return `<p class="sum">${seen.filter(id => S.findings.some(f => f.id === id)).length} of ${S.findings.length} checked. Each one earns 5 XP.</p>` + names.map((n, i) => {
+  return `<p class="sum">${seen.filter(id => S.findings.some(f => f.id === id)).length} of ${S.findings.length} checked.</p>` + names.map((n, i) => {
     const l = S.findings.filter(f => grp(f) === i); if (!l.length) return "";
     return `<section class="grp"><h3>${ic(ico[i])}${n}</h3><div class="cards">${l.map(f => `<div class="card ${esc(f.severity)} ${seen.includes(f.id) ? "seen" : ""}"><h4>${esc(f.title)}</h4><p>${esc(f.detail)}</p>
       <span class="tag">${esc(f.ref)}</span><span class="tag ${i === 0 ? "warn" : ""}">${esc(f.action)}</span><div class="acts">${seen.includes(f.id) ? `<span class="tag good">${ic("check")} checked</span>` : `<button class="btn sm" data-seen="${esc(f.id)}">${ic("check")}Mark as checked</button>`}</div></div>`).join("")}</div></section>`;
   }).join("");
-}
-function rules() {
-  const days = t => { const m = /(\d+)(?: to \d+)? (\w{3}) (\d{4})/.exec(t || ""); if (!m) return null; const d = Date.parse(`${m[1]} ${m[2]} ${m[3]} UTC`); return isNaN(d) ? null : Math.round((d - PLAN) / 864e5); };
-  const cal = S.calendar.map(c => { const d = days(c.dates); return `<div class="card"><h4>${ic("star")}${esc(c.festival)}</h4><p>${esc(c.dates)}. ${esc(c.where)}${d != null ? `. ${d} days after the planning day (${day(0)} 2026).` : ""}</p></div>`; }).join("");
-  const set = { "Store rules": ["r1", "r2", "r3", "r4", "r5"], "Approval and timing": ["r6", "r8"], "Reading the data": ["r7"] }, used = Object.values(set).flat(), rest = S.rules.filter(r => !used.includes(r.id));
-  const sec = (n, l) => l.length ? `<section class="grp"><h3>${ic("shield")}${n}</h3><div class="cards">${l.map(r => `<div class="card"><h4>${esc(r.title)}</h4><p>${esc(r.text)}</p></div>`).join("")}</div></section>` : "";
-  return Object.entries(set).map(([n, ids]) => sec(n, S.rules.filter(r => ids.includes(r.id)))).join("") + sec("Other rules", rest) + (cal ? `<section class="grp"><h3>${ic("star")}Festivals and weddings</h3><div class="cards">${cal}</div></section>` : "");
 }
 function about() {
   const b = S.brief[0], n = b?.network;
@@ -502,30 +457,46 @@ function about() {
     const rows = l.reduce((a, d) => a + (d.rows || 0), 0);
     return `<section class="grp"><h3>${ic("grid")}${g}</h3><p class="sum">${l.length} tables${rows ? `, ${rows.toLocaleString("en-IN")} rows` : ""}</p><table>${l.map(d => `<tr><td><b>${esc(d.tab)}</b></td><td>${esc(d.useFor)}</td><td class="n">${d.rows ? d.rows.toLocaleString("en-IN") : ""}</td></tr>`).join("")}</table></section>`;
   }).join("");
-  return top + guide + `<section class="grp"><h3>${ic("book")}Words used here</h3><div class="cards">${WORDS.map(([w, d]) => `<div class="card"><h4>${w}</h4><p>${d}</p></div>`).join("")}</div></section>`;
+  return top + guide + `<section class="grp"><h3>${ic("grid")}Words used here</h3><div class="cards">${WORDS.map(([w, d]) => `<div class="card"><h4>${w}</h4><p>${d}</p></div>`).join("")}</div></section>`;
 }
 
-/* ---------- regional manager: map, inventory, performance, relocation ---------- */
+/* ---------- regional manager: Kolkata map, full store details, inventory, performance, relocation ---------- */
+function kolkataMap(agg, sel) {
+  const maxU = Math.max(1, ...agg.map(a => a.units)), seen = {};
+  const river = RIVER.map(p => `${MX(p[0]).toFixed(1)},${MY(p[1]).toFixed(1)}`).join(" ");
+  const labels = NEIGH.map(n => `<text x="${MX(n[1]).toFixed(1)}" y="${(MY(n[2]) + 26).toFixed(1)}" text-anchor="middle" font-size="9" fill="#b3a68a">${n[0]}</text>`).join("");
+  const pins = agg.map(a => {
+    const k = a.lng + "|" + a.lat, i = seen[k] = (seen[k] ?? -1) + 1, x = MX(a.lng) + (i % 3 - 1) * 20, y = MY(a.lat) + Math.floor(i / 3) * 20, r = 8 + a.units / maxU * 8;
+    const col = a.hot + a.slow === 0 ? "#2f6f43" : a.slow >= a.hot ? "#b8923a" : "#b3261e", on = a.id === sel;
+    return `<g data-store="${esc(a.id)}" style="cursor:pointer" tabindex="0" role="button" aria-label="${esc(a.id)}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${col}" fill-opacity=".88" stroke="${on ? "#221d1a" : "#fff"}" stroke-width="${on ? 3 : 2}"/><text x="${x.toFixed(1)}" y="${(y - r - 4).toFixed(1)}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#221d1a">${esc(a.id)}</text></g>`;
+  }).join("");
+  return `<svg viewBox="0 0 500 500" role="img" aria-label="Map of Kolkata stores"><rect width="500" height="500" rx="10" fill="#f4f1e8"/>
+    <ellipse cx="${MX(88.43)}" cy="${MY(22.54)}" rx="52" ry="42" fill="#e3ecd8"/><rect x="${MX(88.343)}" y="${MY(22.565)}" width="14" height="30" rx="4" fill="#e3ecd8"/>
+    <polyline points="${river}" fill="none" stroke="#cfe0ea" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="${MX(88.338)}" y1="${MY(22.585)}" x2="${MX(88.356)}" y2="${MY(22.585)}" stroke="#a9a08a" stroke-width="3"/>
+    <text x="${MX(88.312)}" y="${MY(22.64)}" font-size="10" fill="#7fa3b8" font-style="italic" transform="rotate(-80 ${MX(88.312)} ${MY(22.64)})">Hooghly</text>
+    <text x="${MX(88.43)}" y="${MY(22.535)}" font-size="9" fill="#8aa57a" text-anchor="middle">East Kolkata Wetlands</text>${labels}${pins}</svg>`;
+}
 function network() {
   const agg = storeAgg(inventory()); if (!agg.length) return `<div class="empty">No inventory yet. It appears once the engine writes moves or the inventory collection.</div>`;
-  const known = agg.filter(a => a.lng != null), unk = agg.filter(a => a.lng == null);
-  const cities = {}; agg.forEach(a => { const c = cities[a.name] ||= { name: a.name, lng: a.lng, lat: a.lat, units: 0, hot: 0, slow: 0, ok: 0, stores: [] }; c.units += a.units; c.hot += a.hot; c.slow += a.slow; c.ok += a.ok; c.stores.push(a); });
-  const cl = Object.values(cities), P = c => [(c.lng - 67) * 15, (37 - c.lat) * 15], maxU = Math.max(1, ...cl.map(c => c.units));
-  let un = 0; const pos = c => c.lng == null ? [30 + 80 * un++, 480] : P(c);
-  const dots = cl.map(c => { const [x, y] = pos(c), r = 7 + c.units / maxU * 13, col = c.hot + c.slow === 0 ? "#2f6f43" : c.slow >= c.hot ? "#d9801f" : "#b3261e";
-    return `<g data-city="${esc(c.name)}" style="cursor:pointer" tabindex="0" role="button" aria-label="${esc(c.name)}"><circle cx="${x}" cy="${y}" r="${r}" fill="${col}" fill-opacity=".85" stroke="${S.city === c.name ? "#2b2420" : "#fff"}" stroke-width="${S.city === c.name ? 3 : 2}"/><text x="${x}" y="${y - r - 4}" text-anchor="middle" font-size="12" font-weight="700" fill="#2b2420">${esc(c.name)}</text></g>`; }).join("");
-  const sel = cities[S.city] || cl[0], stores = sel.stores;
-  return demoNote() + `<div class="two"><div class="mapbox"><svg viewBox="0 0 500 500" role="img" aria-label="Map of stores"><polygon points="${OUTLINE.map(p => P({ lng: p[0], lat: p[1] }).join(",")).join(" ")}" fill="#fffaf0" stroke="#c9b88f" stroke-width="2"/>${dots}</svg>
-    <p class="sum" style="margin:6px 8px">Schematic map. Dot size is units on hand. ${ic("check", "color:#2f6f43")} healthy, ${ic("alert", "color:#d9801f")} mostly slow, ${ic("alert", "color:#b3261e")} mostly running low.${unk.length || cl.some(c => c.lng == null) ? " Cities without coordinates sit along the bottom." : ""}</p></div>
-    <div><section class="grp"><h3>${ic("pin")}${esc(sel.name)}</h3><p class="sum">${sel.stores.length} store${sel.stores.length === 1 ? "" : "s"}, ${sel.units} units</p>${stores.map(s => {
-      const pc = s.cap ? Math.min(100, s.units / s.cap * 100) : null;
-      return `<div class="card" style="margin-bottom:10px"><h4>${ic("store")}${esc(s.id)} ${s.tier ? `<span class="tag">${esc(s.tier)}</span>` : ""}</h4><p>${s.units} units, ${inr(s.value)} at tag price</p>
-      ${pc !== null ? `<div class="meter"><i style="width:${pc}%;background:${pc > 90 ? "#b3261e" : "#2f6f68"}"></i></div><p>${Math.round(pc)}% of ${s.cap} capacity</p>` : ""}
-      <span class="pill hot">${s.hot} running low</span> <span class="pill slow">${s.slow} not selling</span> <span class="pill okp">${s.ok} healthy</span>
-      <div class="acts"><button class="btn sm" data-invstore="${esc(s.id)}">${ic("box")}See inventory</button></div></div>`; }).join("")}</section></div></div>`;
+  const sel = agg.find(a => a.id === S.sel) || agg[0];
+  return demoNote() + `<div class="two"><div class="mapbox">${kolkataMap(agg, sel.id)}<p class="sum" style="margin:6px 8px">Kolkata, schematic. Dot size is units on hand; colour is the biggest problem at that store.</p></div>
+    <div><p class="sum"><span class="hc hot"><i></i>running low</span><span class="hc slow"><i></i>not selling</span><span class="hc ok"><i></i>healthy</span> (lines per store)</p>${agg.map(a =>
+    `<button class="srow ${a.id === sel.id ? "sel" : ""}" data-store="${esc(a.id)}"><b>${esc(a.id)}</b><span class="sub">${esc(a.area)}${a.tier ? ` · ${esc(a.tier)}` : ""}</span><span class="sp">${a.units} units</span>${chips(a)}</button>`).join("")}</div></div>${storeDetail(sel)}`;
+}
+function storeDetail(s) {
+  const rows = [...s.rows].filter(r => r.onHand > 0 || r.vel > 0).sort((a, b) => ({ hot: 0, slow: 1, ok: 2 }[health(a)] - { hot: 0, slow: 1, ok: 2 }[health(b)]) || a.sku.localeCompare(b.sku));
+  const pend = S.moves.filter(m => m.status === "proposed" && (m.from === s.id || m.to === s.id)).length, pc = s.cap ? Math.min(100, s.units / s.cap * 100) : null;
+  return `<section class="sd" id="storeDetail"><h3>${esc(s.id)} <span class="sub" style="font:400 14px var(--sans)">${esc(s.area)}, Kolkata</span></h3>
+    <div class="stats"><div>Tier<b>${esc(s.tier || "n/a")}</b></div><div>Units on hand<b>${s.units}</b></div><div>Value at tag price<b>${inr(s.value)}</b></div><div>Stock lines<b>${rows.length}</b></div><div>Capacity<b>${s.cap || "n/a"}</b></div><div>Health<b style="font-size:15px;padding-top:4px">${chips(s)}</b></div></div>
+    ${pc !== null ? `<div class="meter"><i style="width:${pc}%;background:${pc > 90 ? "#b3261e" : "#b8923a"}"></i></div><p class="sub">${Math.round(pc)}% of capacity used</p>` : ""}
+    ${pend ? `<p class="sum">${ic("swap")} ${pend} pending move${pend === 1 ? "" : "s"} touch this store.</p>` : ""}
+    ${rows.length ? `<div class="scroll"><table><tr><th></th><th>Stock</th><th class="n">On hand</th><th class="n">Sells / day</th><th class="n">Cover</th><th class="n">Age (d)</th><th class="n">Value</th><th>Status</th><th></th></tr>${rows.map(r => { const h = HL[health(r)], c = cov(r.onHand, r.vel);
+      return `<tr><td>${artTile(r.sku, r.img, "ph")}</td><td><b>${esc(r.sku)}</b><br><span class="sub">${esc(catOf(r.sku)[0])}</span></td><td class="n">${r.onHand}${r.inTransit ? ` (+${r.inTransit})` : ""}</td><td class="n">${num(r.vel)}</td><td class="n">${isFinite(c) ? num(c) + " d" : "none"}</td><td class="n">${r.age || ""}</td><td class="n">${inr(r.onHand * r.mrp)}</td><td><span class="pill ${h[1]}">${h[0]}</span></td>
+      <td>${r.onHand > 0 ? `<button class="btn sm ${health(r) === "slow" ? "primary" : ""}" data-reloc="${esc(r.store)}|${esc(r.sku)}">${ic("swap")}Relocate</button>` : ""}</td></tr>`; }).join("")}</table></div>` : `<div class="empty">This store holds no stock.</div>`}</section>`;
 }
 function filtered() {
-  return inventory().filter(r => (S.f.store === "all" || r.store === S.f.store) && (S.f.cat === "all" || catOf(r.sku)[0] === S.f.cat) && (S.f.st === "all" || health(r) === S.f.st));
+  return inventory().filter(r => (r.onHand > 0 || r.vel > 0) && (S.f.store === "all" || r.store === S.f.store) && (S.f.cat === "all" || catOf(r.sku)[0] === S.f.cat) && (S.f.st === "all" || health(r) === S.f.st));
 }
 function invView() {
   const all = inventory(), stores = [...new Set(all.map(r => r.store))].sort(), cats = [...new Set(all.map(r => catOf(r.sku)[0]))].sort(), rows = filtered().sort((a, b) => cov(a.onHand, a.vel) - cov(b.onHand, b.vel));
@@ -533,61 +504,44 @@ function invView() {
   return demoNote() + `<div class="tools"><label>Store <select id="fStore">${opt("all", S.f.store, "All stores")}${stores.map(s => opt(s, S.f.store)).join("")}</select></label>
     <label>Category <select id="fCat">${opt("all", S.f.cat, "All")}${cats.map(c => opt(c, S.f.cat)).join("")}</select></label>
     <label>Status <select id="fSt">${opt("all", S.f.st, "All")}${opt("hot", S.f.st, "Running low")}${opt("slow", S.f.st, "Not selling")}${opt("ok", S.f.st, "Healthy")}</select></label><span class="r sum" style="margin:0">${rows.length} lines, ${rows.reduce((a, r) => a + r.onHand, 0)} units</span></div>
-  ${rows.length ? `<div class="scroll"><table><tr><th></th><th>SKU</th><th>Store</th><th class="n">On hand</th><th class="n">Sells / day</th><th class="n">Cover</th><th class="n">Age (days)</th><th>Status</th></tr>${rows.slice(0, 150).map(r => { const h = HL[health(r)];
-    return `<tr><td>${artTile(r.sku)}</td><td>${esc(r.sku)}</td><td>${esc(r.store)}</td><td class="n">${r.onHand}${r.inTransit ? ` (+${r.inTransit})` : ""}</td><td class="n">${num(r.vel)}</td><td class="n">${isFinite(cov(r.onHand, r.vel)) ? num(cov(r.onHand, r.vel)) + " d" : "none"}</td><td class="n">${r.age || ""}</td><td><span class="pill ${h[1]}">${h[0]}</span></td></tr>`; }).join("")}</table></div>` : `<div class="empty">Nothing matches these filters.</div>`}`;
+  ${rows.length ? `<div class="scroll"><table><tr><th></th><th>SKU</th><th>Store</th><th class="n">On hand</th><th class="n">Sells / day</th><th class="n">Cover</th><th class="n">Age (d)</th><th>Status</th><th></th></tr>${rows.slice(0, 400).map(r => { const h = HL[health(r)];
+    return `<tr><td>${artTile(r.sku, r.img, "ph")}</td><td>${esc(r.sku)}</td><td>${esc(r.store)}</td><td class="n">${r.onHand}${r.inTransit ? ` (+${r.inTransit})` : ""}</td><td class="n">${num(r.vel)}</td><td class="n">${isFinite(cov(r.onHand, r.vel)) ? num(cov(r.onHand, r.vel)) + " d" : "none"}</td><td class="n">${r.age || ""}</td><td><span class="pill ${h[1]}">${h[0]}</span></td>
+    <td>${r.onHand > 0 ? `<button class="btn sm" data-reloc="${esc(r.store)}|${esc(r.sku)}">${ic("swap")}Relocate</button>` : ""}</td></tr>`; }).join("")}</table></div>` : `<div class="empty">Nothing matches these filters.</div>`}`;
 }
 function perf() {
   const all = inventory().filter(r => r.onHand > 0 || r.vel > 0), best = [...all].sort((a, b) => b.vel - a.vel).slice(0, 6), slow = all.filter(r => health(r) === "slow").sort((a, b) => b.onHand * b.mrp - a.onHand * a.mrp);
   const mine = [...S.moves.filter(m => m.createdBy === S.user.email), ...(S.localReloc || [])];
-  return demoNote() + `<div class="two"><section class="grp"><h3>${ic("up")}Selling well</h3><p class="sum">Fastest sellers right now.</p>${best.map(r => `<div class="card ok" style="margin-bottom:8px;display:flex;gap:12px;align-items:center">${artTile(r.sku)}<div><h4>${esc(r.sku)} at ${esc(r.store)}</h4><p style="margin:0">${num(r.vel)} a day, ${r.onHand} on hand, lasts ${dd(cov(r.onHand, r.vel))}</p></div></div>`).join("") || `<div class="empty">No sales data yet.</div>`}</section>
-    <section class="grp"><h3>${ic("down")}Not selling</h3><p class="sum">${slow.length} lines are older than 60 days with almost no sales, or cover more than ${SLOW_COVER} days. Relocate them to a store where they sell.</p>${slow.slice(0, 12).map(r => `<div class="card warn" style="margin-bottom:8px;display:flex;gap:12px;align-items:center">${artTile(r.sku)}<div style="flex:1"><h4>${esc(r.sku)} at ${esc(r.store)}</h4><p style="margin:0">${r.onHand} on hand, ${r.sold28} sold in 28 days${r.age ? `, ${r.age} days old` : ""}</p></div><button class="btn sm primary" data-reloc="${esc(r.store)}|${esc(r.sku)}">${ic("swap")}Relocate</button></div>`).join("") || `<div class="empty">No slow stock found. Nice work.</div>`}</section></div>
-    ${mine.length ? `<section class="grp"><h3>${ic("trophy")}Your relocations</h3>${mine.map(m => `<p class="sum">${m.qty} x ${esc(m.sku)}, ${esc(m.from)} to ${esc(m.to)}: <b>${esc(m.status)}</b></p>`).join("")}</section>` : ""}`;
+  return demoNote() + `<div class="two"><section class="grp"><h3>${ic("up")}Selling well</h3><p class="sum">Fastest sellers right now.</p>${best.map(r => `<div class="card ok" style="margin-bottom:8px;display:flex;gap:12px;align-items:center">${artTile(r.sku, r.img)}<div><h4>${esc(r.sku)} at ${esc(r.store)}</h4><p style="margin:0">${num(r.vel)} a day, ${r.onHand} on hand, lasts ${dd(cov(r.onHand, r.vel))}</p></div></div>`).join("") || `<div class="empty">No sales data yet.</div>`}</section>
+    <section class="grp"><h3>${ic("down")}Not selling</h3><p class="sum">${slow.length} lines are older than 60 days with almost no sales, or cover more than ${SLOW_COVER} days.</p>${slow.slice(0, 12).map(r => `<div class="card warn" style="margin-bottom:8px;display:flex;gap:12px;align-items:center">${artTile(r.sku, r.img)}<div style="flex:1"><h4>${esc(r.sku)} at ${esc(r.store)}</h4><p style="margin:0">${r.onHand} on hand, ${r.sold28} sold in 28 days${r.age ? `, ${r.age} days old` : ""}</p></div><button class="btn sm primary" data-reloc="${esc(r.store)}|${esc(r.sku)}">${ic("swap")}Relocate</button></div>`).join("") || `<div class="empty">No slow stock found.</div>`}</section></div>
+    ${mine.length ? `<section class="grp"><h3>${ic("swap")}Your relocations</h3>${mine.map(m => `<p class="sum">${m.qty} x ${esc(m.sku)}, ${esc(m.from)} to ${esc(m.to)}: <b>${esc(m.status)}</b></p>`).join("")}</section>` : ""}`;
 }
 let relTarget = null;
+const unitsAt = st => inventory().filter(r => r.store === st).reduce((a, r) => a + r.onHand, 0);
+const capOf = st => storesList().find(s => s.id === st)?.capacity || 0;
+function relInfo() {
+  const { src, cand } = relTarget, to = $("relTo").value, d = cand.find(c => c.store === to), cap = capOf(to), u = unitsAt(to);
+  $("relInfo").textContent = (d ? `${to} sells ${num(d.vel)} a day of this SKU and holds ${d.onHand}.` : `${to} has no sales history for this SKU.`) + (cap ? ` Room left: ${Math.max(0, cap - u)} units.` : "") + " The merchandiser approves the move, then stock updates for both stores.";
+}
 function openReloc(store, sku) {
   const inv = inventory(), src = inv.find(r => r.store === store && r.sku === sku); if (!src) return;
-  const cand = inv.filter(r => r.sku === sku && r.store !== store && r.vel > 0).sort((a, b) => b.vel - a.vel), others = [...new Set(inv.map(r => r.store))].filter(s => s !== store && !cand.some(c => c.store === s));
+  const cand = inv.filter(r => r.sku === sku && r.store !== store && r.vel > 0).sort((a, b) => b.vel - a.vel), others = [...new Set([...inv.map(r => r.store), ...storesList().map(s => s.id)])].filter(s => s !== store && !cand.some(c => c.store === s)).sort();
   relTarget = { src, cand };
   $("relWhat").textContent = `${src.onHand} x ${sku} at ${store} sell ${num(src.vel)} a day.`;
-  $("relTo").innerHTML = cand.map(c => `<option value="${esc(c.store)}">${esc(c.store)}: sells ${num(c.vel)} a day, has ${c.onHand}</option>`).join("") + others.map(s => `<option value="${esc(s)}">${esc(s)}: no sales history for this SKU</option>`).join("");
+  $("relTo").innerHTML = cand.map(c => `<option value="${esc(c.store)}">${esc(c.store)}: sells ${num(c.vel)} a day, has ${c.onHand}</option>`).join("") + others.map(s => `<option value="${esc(s)}">${esc(s)}: no sales of this SKU</option>`).join("");
   $("relQty").max = src.onHand; $("relQty").value = Math.max(1, Math.min(src.onHand, cand[0] ? Math.ceil(cand[0].vel * 45 - cand[0].onHand) : src.onHand));
-  $("relInfo").textContent = cand.length ? "Best seller first. The merchandiser approves the move." : "No store sells this SKU yet in the data. The merchandiser will check before approving.";
-  $("relDlg").showModal();
+  relInfo(); $("relDlg").showModal();
 }
+$("relTo").onchange = () => relTarget && relInfo();
 $("relCancel").onclick = () => $("relDlg").close();
 $("relForm").onsubmit = async e => {
   e.preventDefault(); const { src, cand } = relTarget, to = $("relTo").value, d = cand.find(c => c.store === to) || { onHand: 0, vel: 0 }, qty = Math.min(src.onHand, Math.max(1, Math.floor(+$("relQty").value || 1)));
+  const cap = capOf(to), u = unitsAt(to);
+  if (cap && u + qty > cap) { toast(`Blocked: ${to} can only fit ${Math.max(0, cap - u)} more units.`); return; }
   try { await setDoc(doc(db, "moves", "reloc-" + Date.now()), { type: "store_store", sku: src.sku, from: src.store, to, qty, mrp: src.mrp || 0, status: "proposed", exception: "Regional manager relocation", createdBy: S.user.email, createdAt: serverTimestamp(),
-      evidence: { srcOnHand: src.onHand, srcVel: src.vel, dstOnHand: d.onHand, dstVel: d.vel } });
-    $("relDlg").close(); toast("Sent to the merchandiser for approval."); confetti(); }
-  catch (err) { (S.localReloc ||= []).push({ sku: src.sku, from: src.store, to, qty, status: "saved on this screen only" }); $("relDlg").close(); toast("Database refused the new move (" + (err.code || err.message) + "). Kept on this screen only. Update the Firestore rules from the file header."); render(); }
+      evidence: { srcOnHand: src.onHand, srcVel: src.vel, dstOnHand: d.onHand, dstVel: d.vel, dstUnits: u, cap: cap || null } });
+    $("relDlg").close(); toast("Sent to the merchandiser for approval."); }
+  catch (err) { (S.localReloc ||= []).push({ sku: src.sku, from: src.store, to, qty, status: "saved on this screen only" }); $("relDlg").close(); toast("Database refused the new move (" + (err.code || err.message) + "). Update the Firestore rules from the file header."); render(); }
 };
-
-/* ---------- hackathon check: live test of the brief's rules against the moves on screen ---------- */
-function hackCheck() {
-  const ms = S.moves, bad = c => ms.filter(m => check(m).k.includes(c)).length, wh = ms.filter(m => m.type === "wh_store");
-  const bySku = {}; wh.forEach(m => { const o = bySku[m.sku] ||= { q: 0, a: m.evidence?.whAvail ?? Infinity }; o.q += m.qty; });
-  const over = Object.values(bySku).filter(o => o.q > o.a).length, seen = {}, dups = wh.filter(m => seen[m.to + m.sku] ? true : (seen[m.to + m.sku] = 1, false)).length;
-  const noLead = ms.filter(m => m.evidence?.lead == null).length, last = Math.max(0, ...ms.map(m => m.createdAt?.toMillis?.() || 0));
-  const R = (ok, t, d) => ({ s: ok === null ? "warn" : ok ? "ok" : "bad", t, d });
-  const items = [
-    R(ms.length > 0, "Produces a ready-to-approve list", `${ms.length} moves in three groups: warehouse to store, store to store, bring back.`),
-    R(true, "Every move explained in one line", "Each card's sentence is built from that move's own numbers."),
-    R(bad("disp") === 0, "Minimum display kept", `${bad("disp")} moves would break it.`),
-    R(bad("cap") === 0, "No store overfilled", `${bad("cap")} moves would pass capacity.`),
-    R(bad("prot") === 0, "S++ top-20 styles never given away", `${bad("prot")} moves break this.`),
-    R(bad("cover") === 0, "Giving store keeps 30+ days of cover", `${bad("cover")} moves break this.`),
-    R(dups === 0 && over === 0 && bad("avail") === 0, "Stock in transit and warehouse stock not sent twice", `${dups} repeated store and SKU sends, ${over} SKUs sent more than the warehouse holds, ${bad("avail")} moves above stock available.`),
-    R(noLead === 0, "Lead times used", `${noLead} moves have no arrival day.`),
-    R(bad("zero") === 0, "Zero sales is not read as slow", `${bad("zero")} pull-backs are on stock that was barely available.`),
-    R(S.findings.length > 0, "Hidden problems found", `${S.findings.length} findings, ${S.findings.filter(f => ["hold", "quarantine"].includes(f.action)).length} are possible data errors.`),
-    R(alertList().length <= AM_ALERTS, "Area managers see at most " + AM_ALERTS + " alerts", `${alertList().length} shown.`),
-    R(ms.some(m => m.exception || check(m).value > LIMIT) ? true : null, "Moves over Rs 1 lakh need approval", `${ms.filter(m => check(m).value > LIMIT).length} moves are flagged.`),
-    R(last ? Date.now() - last < 36 * 36e5 : null, "Runs on its own", last ? `Newest move written ${new Date(last).toLocaleString("en-IN")}.` : "Moves carry no createdAt time. Schedule the engine (for example Cloud Scheduler) and write createdAt so this check can prove it runs daily.")];
-  const ok = items.filter(i => i.s === "ok").length;
-  return `<p class="sum">${ok} of ${items.length} checks pass. This tests the moves in the database against the rules in the brief. It cannot recompute velocity from the raw workbook, so numbers still need a spot-check in the engine.</p><div class="meter" style="margin-bottom:16px;height:12px"><i style="width:${ok / items.length * 100}%;background:#2f6f43"></i></div>
-  <div class="cards">${items.map(i => `<div class="card ${i.s}"><h4>${ic(i.s === "ok" ? "check" : "alert", `color:${i.s === "ok" ? "#2f6f43" : i.s === "bad" ? "#b3261e" : "#d9801f"}`)}${esc(i.t)}</h4><p>${esc(i.d)}</p></div>`).join("")}</div>`;
-}
 
 /* ---------- actions ---------- */
 const byId = id => S.moves.find(m => m.id === id);
@@ -603,7 +557,7 @@ function wire() {
   [["fStore", "store"], ["fCat", "cat"], ["fSt", "st"]].forEach(([id, k]) => { const el = $(id); if (el) el.onchange = () => { S.f[k] = el.value; render(); }; });
   q("[data-approve]", b => b.onclick = () => {
     const m = byId(b.dataset.approve), c = check(m);
-    if (c.v.length && !confirm("This move breaks a rule:\n- " + c.v.join("\n- ") + "\nApprove anyway?")) return;
+    if (c.v.length) { toast("Blocked: " + c.v[0]); return; }
     decide(m.id, { status: "approved", skipReason: null, urgent: urgent(m) });
   });
   q("[data-reset]", b => b.onclick = () => decide(b.dataset.reset, { status: "proposed", skipReason: null, urgent: false }));
@@ -611,8 +565,7 @@ function wire() {
   q("[data-qty]", i => i.onchange = () => { const m = byId(i.dataset.qty), n = Math.min(avail(m) ?? Infinity, Math.max(1, Math.floor(+i.value || m.qty))); decide(m.id, { qty: n }); });
   q("[data-seen]", b => b.onclick = () => { ls.set("sm-seen-", [...new Set([...getSeen(), b.dataset.seen])]); render(); });
   q("[data-pick]", i => i.onchange = () => { const s = new Set(ls.get("sm-picks-", [])); i.checked ? s.add(i.dataset.pick) : s.delete(i.dataset.pick); ls.set("sm-picks-", [...s]); render(); });
-  q("[data-city]", g => { const go = () => { S.city = g.dataset.city; ls.set("sm-cities-", [...new Set([...ls.get("sm-cities-", []), S.city])]); render(); }; g.onclick = go; g.onkeydown = e => { if (e.key === "Enter" || e.key === " ") go(); }; });
-  q("[data-invstore]", b => b.onclick = () => { S.f = { store: b.dataset.invstore, cat: "all", st: "all" }; S.tab = "inv"; render(); });
+  q("[data-store]", g => { const go = () => { S.sel = g.dataset.store; render(); $("storeDetail")?.scrollIntoView({ behavior: "smooth", block: "start" }); }; g.onclick = go; g.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }; });
   q("[data-reloc]", b => b.onclick = () => { const [s, k] = b.dataset.reloc.split("|"); openReloc(s, k); });
   const batch = async (list, msg, extra) => {
     try { const b = writeBatch(db); list.forEach(m => b.update(doc(db, "moves", m.id), { status: "approved", ...(extra ? extra(m) : {}), decidedBy: S.user.email, decidedAt: serverTimestamp() })); await b.commit(); toast(msg); }
