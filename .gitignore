@@ -1,7 +1,0 @@
-.env
-__pycache__/
-.venv/
-data/
-out/
-state/
-firebase/

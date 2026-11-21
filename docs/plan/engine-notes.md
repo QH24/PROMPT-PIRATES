@@ -1,7 +1,0 @@
-# Engine notes (plan vs data)
-- 319 (store, sku) pairs sold 862 units in the 28-day window but have NO row in `stock_snapshot.csv` (zero-stock rows omitted). lld says `pos` = snapshot rows, so `build_position(inp, cfg)` still returns exactly 3,547 rows (T2 Accept). `run.py` calls it with `include_implied=True`, which adds those pairs as zero-stock rows: they are the real "selling with no stock" needs (F4) and their velocity belongs in `v_style` (validator R5 sums v over all sizes of a style, so omitting them made the engine pass moves the validator rejected).
-- Quarantined units (KNP-03 SHW-02-L 300) count for capacity (A7) but not for style/category on-hand used by donor-cover and min-display. Otherwise KNP-03 looks like a rich SHW-02 donor.
-- Validator R5 judges ALL outflow of a (store, style) once that style has any store->store move, so a later PULL_BACK of the same style is held to the 30-day style rule too (engine: `Ledger.s2s_styles`).
-- `evidence.to_on_hand/to_in_transit/to_cover_before` are the pre-plan receiver position; `to_cover_after` includes all units allocated to that need so far.
-- Added to contract: `validator.badge` (string), `Inputs.monthly`, `Inputs.row_counts`. Written header-only: `out/approved.csv`, `out/pick-list.csv`. `out/validation.json` is the validator's raw result.
-- Exceptions are 232 of 960 moves (THIN_DATA 137, CROSS_ZONE 110, NEW_STORE 30); build-spec T10 target is ~40. Tuning left for T10.
