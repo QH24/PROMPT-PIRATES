@@ -27,7 +27,7 @@
              allow update: if false;
            }
            match /{col}/{id} {
-             allow read: if request.auth != null && col in ['moves','findings','rules','calendar'];
+             allow read: if request.auth != null && col in ['moves','findings','rules','calendar','data_guide','brief'];
              // merchandisers decide moves; seeding needs temporary open writes (see seed button)
              allow update: if request.auth != null && col == 'moves'
                && get(/databases/$(db)/documents/users/$(request.auth.uid)).data.role == 'merchandiser';
@@ -205,7 +205,7 @@ dialog p{margin:0 0 16px;color:var(--ink-soft)}
 <div id="toast" hidden></div>
 
 <!-- DELETE-SEED-BUTTON HTML START -->
-<button id="seedBtn" title="Temporary: uploads demo data to Firestore">Upload demo data</button>
+<button id="seedBtn" title="Temporary: uploads the PDF data and demo data to Firestore">Upload PDF + demo data</button>
 <!-- DELETE-SEED-BUTTON HTML END -->
 
 <script type="module">
@@ -372,10 +372,7 @@ function movesView() {
   const bar = `<div class="bar">
     <label>Store <select id="storeSel"><option value="all">All stores</option>${stores.map(s => `<option ${S.store === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label>
     <div class="grow">
-      ${editable ? `<button class="btn primary" id="approveRoutine" ${routine.length ? "" : "disabled"}>Approve ${routine.length} routine moves</button>
-      <button class="btn" data-export="approved">Export approved CSV</button>
-      <button class="btn" data-export="pick">Export pick list CSV</button>
-      <button class="btn" data-export="json">Export approvals JSON</button>` : ""}
+      ${editable ? `<button class="btn primary" id="approveRoutine" ${routine.length ? "" : "disabled"}>Approve ${routine.length} routine moves</button>` : ""}
     </div></div>`;
   if (!list.length) return bar + `<div class="empty">No moves yet. Run the engine, or use the demo upload button.</div>`;
   const rows = list.map(m => {
@@ -406,7 +403,7 @@ function movesView() {
 
 function pickView() {
   const list = S.moves.filter(m => m.type === "wh_store" && m.status === "approved");
-  const bar = `<div class="bar"><div class="grow"><button class="btn" data-export="pick" ${list.length ? "" : "disabled"}>Export pick list CSV</button></div></div>`;
+  const bar = "";
   if (!list.length) return bar + `<div class="empty">Nothing to pick yet. The merchandiser has not approved any warehouse dispatches.</div>`;
   const groups = {};
   list.forEach(m => (groups[m.to] ||= []).push(m));
@@ -467,7 +464,6 @@ function wire() {
       await b.commit(); toast(`Approved ${list.length} routine moves.`);
     } catch (err) { toast("Could not approve: " + (err.code || err.message)); }
   };
-  q("[data-export]", b => b.onclick = () => exportFile(b.dataset.export));
 }
 let skipTarget = null;
 $("skipCancel").onclick = () => $("skipDlg").close();
@@ -476,24 +472,6 @@ $("skipForm").onsubmit = e => {
   decide(skipTarget.id, { status: "skipped", skipReason: $("skipReason").value });
   $("skipDlg").close();
 };
-
-function download(name, text, type) {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href);
-}
-const csv = rows => rows.map(r => r.map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
-function exportFile(kind) {
-  const day = new Date().toISOString().slice(0, 10);
-  if (kind === "json") {
-    const out = S.moves.filter(m => m.status !== "proposed").map(m => ({ key: `${m.from}|${m.to}|${m.sku}`, status: m.status, qty: m.qty, skipReason: m.skipReason || null }));
-    return download(`approvals-${day}.json`, JSON.stringify(out, null, 2), "application/json");
-  }
-  const list = S.moves.filter(m => m.status === "approved" && (kind === "approved" || m.type === "wh_store"));
-  if (!list.length) return toast("Nothing approved to export yet.");
-  const head = kind === "pick" ? ["to_store", "sku", "qty", "lead_days"] : ["type", "from", "to", "sku", "qty", "value_at_mrp", "reason"];
-  const body = list.map(m => kind === "pick" ? [m.to, m.sku, m.qty, m.evidence?.lead] : [TYPE_LABEL[m.type], m.from, m.to, m.sku, m.qty, m.qty * m.mrp, reason(m)]);
-  download(`${kind === "pick" ? "pick-list" : "approved-moves"}-${day}.csv`, csv([head, ...body]), "text/csv");
-}
 
 /* DELETE-SEED-BUTTON JS START
    Everything between this line and "DELETE-SEED-BUTTON JS END" is demo-only. Delete it with the
@@ -533,7 +511,33 @@ const DEMO = {
     { id: "r3", title: "Flagship protection", text: "S++ flagships never give away their top-20 styles." },
     { id: "r4", title: "Stock in transit", text: "In-transit units count as arriving. Do not send them twice." },
     { id: "r5", title: "Donor cover", text: "No store-to-store move may leave the giving store with under 30 days of cover." },
-    { id: "r6", title: "Approval limit", text: "A move line worth more than Rs 1,00,000 at MRP needs approval. Moves are never split to avoid it." }
+    { id: "r6", title: "Approval limit", text: "A move line worth more than Rs 1,00,000 at MRP needs approval. Moves are never split to avoid it." },
+    { id: "r7", title: "Zero sales is not always slow", text: "Check days in stock before trusting a zero. A SKU that was out of stock is unavailable, not slow." },
+    { id: "r8", title: "Lead times and reasons", text: "Ignore transport cost, but lead times still matter. Every move is explained in one line." }
+  ],
+  data_guide: [
+    { id: "stores", tab: "stores", oneRowIs: "Store", rows: 20, useFor: "City, tier, capacity, area manager" },
+    { id: "area_managers", tab: "area_managers", oneRowIs: "Area manager", rows: 6, useFor: "Who looks after which stores; max_alerts_per_week" },
+    { id: "items", tab: "items", oneRowIs: "SKU (style + size)", rows: 385, useFor: "Category, size, price, launch" },
+    { id: "salespeople", tab: "salespeople", oneRowIs: "Salesperson", rows: 175, useFor: "Who works where, and since when" },
+    { id: "roster_daily", tab: "roster_daily", oneRowIs: "Salesperson per day", rows: 23569, useFor: "Who was on the floor, May to Oct 2026" },
+    { id: "footfall_daily", tab: "footfall_daily", oneRowIs: "Store per day", rows: 13892, useFor: "Walk-ins from the door camera" },
+    { id: "bills", tab: "bills", oneRowIs: "Bill", rows: 90805, useFor: "Every sale: store, salesperson, customer, date" },
+    { id: "bill_lines", tab: "bill_lines", oneRowIs: "Item on a bill", rows: 259772, useFor: "What was on each bill, and at what price" },
+    { id: "stock_snapshot", tab: "stock_snapshot", oneRowIs: "Location x SKU", rows: 3547, useFor: "Stock on 31 Oct 2026, including warehouse and in transit" },
+    { id: "stock_weekly", tab: "stock_weekly", oneRowIs: "Store x SKU x week", rows: 61416, useFor: "Stock and days in stock, last 12 weeks" },
+    { id: "warehouse_inbound", tab: "warehouse_inbound", oneRowIs: "Delivery", rows: 768, useFor: "What is arriving at the warehouse" },
+    { id: "calendar", tab: "calendar", oneRowIs: "Date x state", rows: 2373, useFor: "Festivals and wedding dates" },
+    { id: "stock_rules", tab: "rules, min_display, lead_times, flagship_protected", oneRowIs: "Rule / setting", rows: null, useFor: "Stock rules for Stock Mover" }
+  ],
+  brief: [
+    { id: "case-b", title: "Stock Mover", tagline: "Right stock. Right store. Right size.", company: "Vedant Fashions Limited", event: "AI Hackathon, November 2026",
+      goal: "Every day, find stock that is in the wrong place and produce a ready-to-approve list: what to send from the warehouse, what to move between stores, and what to pull back.",
+      handles: ["Warehouse to store", "Under-stocked stores", "Store to store", "Ageing stock"],
+      dates: { salesFrom: "2024-11-01", salesTo: "2026-10-31", stockAsOf: "2026-10-31", rosterFrom: "2026-05-01", rosterTo: "2026-10-31" },
+      network: { stores: 20, warehouse: "WH-KOL", cities: 6, zones: { North: "Uttar Pradesh", East: "Bihar", South: "Karnataka" }, tiers: "S++ super flagship, S+ flagship, A and B smaller (A better than B)" },
+      categories: ["Sherwani", "Indo-Western", "Kurta Set", "Jacket", "Mojari", "Safa", "Mala", "Stole", "Packaging"],
+      judging: ["Hidden stock problems found", "Numbers spot-checked", "No rule broken", "Runs on its own", "Zero sales is not always slow"] }
   ],
   calendar: [
     { id: "c1", festival: "Diwali", dates: "8 Nov 2026", where: "All three states" },
@@ -543,11 +547,11 @@ const DEMO = {
 };
 $("seedBtn").onclick = async () => {
   if (!configured || !auth.currentUser) return toast("Sign in first, then upload.");
-  if (!confirm("Upload demo data to Firestore? This overwrites moves, findings, rules and calendar with the same ids.")) return;
+  if (!confirm("Upload the PDF data and demo data to Firestore? This overwrites moves (resetting their approval status), findings, rules, calendar, data_guide and brief documents with the same ids.")) return;
   try {
     const b = writeBatch(db);
     for (const [col, items] of Object.entries(DEMO)) items.forEach(({ id, ...data }) => b.set(doc(db, col, id), data));
-    await b.commit(); toast("Demo data uploaded.");
+    await b.commit(); toast("PDF and demo data uploaded.");
   } catch (err) { toast("Upload failed: " + (err.code || err.message) + " (check Firestore rules allow your write)"); }
 };
 /* DELETE-SEED-BUTTON JS END */
