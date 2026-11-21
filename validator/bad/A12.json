@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "note": "R8: one move split into two rows of Rs 50,392 to dodge Rs 1 lakh",
+  "run": {
+    "date": "2026-10-31",
+    "as_of": "2026-10-31"
+  },
+  "moves": [
+    {
+      "move_id": "WH-KOL>MZF-01>KUR-02-XL",
+      "type": "WH_TO_STORE",
+      "from": "WH-KOL",
+      "to": "MZF-01",
+      "sku_id": "KUR-02-XL",
+      "style_id": "KUR-02",
+      "style_name": "Mustard Embroidered Yoke Kurta Set",
+      "category": "Kurta Set",
+      "size": "XL",
+      "qty": 8,
+      "mrp": 6299,
+      "value_mrp": 50392,
+      "lead_days": 3,
+      "dispatch_on": "2026-10-31",
+      "arrives_on": "2026-11-03",
+      "needs_approval": false,
+      "warnings": [],
+      "routine": true,
+      "reason": "hand-written test move",
+      "evidence": {},
+      "finding_ids": [],
+      "status": "Proposed"
+    },
+    {
+      "move_id": "WH-KOL>MZF-01>KUR-02-XL",
+      "type": "WH_TO_STORE",
+      "from": "WH-KOL",
+      "to": "MZF-01",
+      "sku_id": "KUR-02-XL",
+      "style_id": "KUR-02",
+      "style_name": "Mustard Embroidered Yoke Kurta Set",
+      "category": "Kurta Set",
+      "size": "XL",
+      "qty": 8,
+      "mrp": 6299,
+      "value_mrp": 50392,
+      "lead_days": 3,
+      "dispatch_on": "2026-10-31",
+      "arrives_on": "2026-11-03",
+      "needs_approval": false,
+      "warnings": [],
+      "routine": true,
+      "reason": "hand-written test move",
+      "evidence": {},
+      "finding_ids": [],
+      "status": "Proposed"
+    }
+  ]
+}

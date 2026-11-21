@@ -1,0 +1,4 @@
+{"velocity_window_days":28, "thin_data_days":14, "under_cover_days":14, "target_cover_days":30,
+ "donor_rule_days":30, "donor_keep_days":45, "donor_min_cover_days":60,
+ "pullback_cover_days":120, "pullback_age_days":120, "pullback_keep_days":60,
+ "approval_mrp_rs":100000, "festival_lookahead_days":21}
