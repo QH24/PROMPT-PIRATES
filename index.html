@@ -188,6 +188,27 @@ const CITIES = { LKO: ["Lucknow", 80.95, 26.85], KNP: ["Kanpur", 80.35, 26.45], 
   BLR: ["Bengaluru", 77.59, 12.97], MYS: ["Mysuru", 76.64, 12.3], HUB: ["Hubballi", 75.12, 15.36], MNG: ["Mangaluru", 74.85, 12.91], BEL: ["Belagavi", 74.5, 15.85] };
 const OUTLINE = [[68.2,23.7],[70.5,20.8],[72.8,19.1],[73.9,15.3],[74.9,12.8],[76.3,9.6],[77.5,8.1],[78.2,9],[79.9,10.3],[80.3,13.1],[80,15.6],[82.3,17],[85,19.7],[87,21.5],[88.7,21.8],[89.1,26.3],[92,25.8],[94.5,27.2],[97,28],[95.5,29.2],[92,27.8],[88,27.9],[84,28.8],[81,30.2],[79,32.5],[78,35.3],[75,36.8],[74,34.5],[74.5,32.5],[74,30.5],[71,28],[70.5,25]];
 
+/* ---------- built-in demo data: used when the stores / inventory collections are empty ---------- */
+const DEMO = (() => {
+  const T = { "S++": 1.6, "S+": 1.2, A: .9, B: .6 };
+  const stores = [["LKO-01","Lucknow",80.95,26.85,"S++",1200],["LKO-02","Lucknow",80.95,26.85,"S+",900],["LKO-03","Lucknow",80.95,26.85,"A",600],["LKO-04","Lucknow",80.95,26.85,"B",450],
+    ["KNP-01","Kanpur",80.35,26.45,"S+",800],["KNP-02","Kanpur",80.35,26.45,"A",600],["KNP-03","Kanpur",80.35,26.45,"B",420],
+    ["PAT-01","Patna",85.14,25.6,"S++",1100],["PAT-02","Patna",85.14,25.6,"S+",850],["PAT-03","Patna",85.14,25.6,"A",600],["PAT-04","Patna",85.14,25.6,"B",430],
+    ["GAY-01","Gaya",85.0,24.8,"A",580],["GAY-02","Gaya",85.0,24.8,"B",400],
+    ["BLR-01","Bengaluru",77.59,12.97,"S++",1300],["BLR-02","Bengaluru",77.59,12.97,"S+",950],["BLR-03","Bengaluru",77.59,12.97,"A",650],["BLR-04","Bengaluru",77.59,12.97,"B",450],
+    ["MYS-01","Mysuru",76.64,12.3,"S+",780],["MYS-02","Mysuru",76.64,12.3,"A",560],["MYS-03","Mysuru",76.64,12.3,"B",400]].map(([id, city, lng, lat, tier, capacity]) => ({ id, city, lng, lat, tier, capacity }));
+  const skus = [["KUR-02-L",6799],["KUR-05-M",5499],["KUR-12-XL",6799],["KUR-08-S",4999],["SHE-01-L",24999],["SHE-03-XL",19999],["IND-04-M",14999],["JAC-03-L",8999],["MOJ-01-9",2199],["MOJ-02-8",2499],["SAF-01-FS",1299],["STO-02-FS",1999]];
+  let seed = 7; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const inv = [];
+  stores.forEach(st => skus.forEach(([sku, mrp]) => {
+    if (rnd() > .8) return; const k = rnd(); let vel, onHand, age;
+    if (k < .2) { vel = Math.round(rnd() * 3) / 100; onHand = 8 + Math.floor(rnd() * 30); age = 70 + Math.floor(rnd() * 130); }
+    else if (k < .38) { vel = Math.round((.6 + rnd() * 1.2) * T[st.tier] * 10) / 10; onHand = 1 + Math.floor(rnd() * 4); age = 10 + Math.floor(rnd() * 30); }
+    else { vel = Math.round((.2 + rnd() * 1.2) * T[st.tier] * 10) / 10; onHand = Math.max(1, Math.round(vel * (15 + rnd() * 50))); age = 5 + Math.floor(rnd() * 50); }
+    inv.push({ store: st.id, sku, onHand, inTransit: 0, vel, age, sold28: Math.round(vel * 28), mrp });
+  }));
+  return { stores, inv };
+})();
 const S = { user: null, role: null, tab: "", store: "all", moves: [], findings: [], rules: [], calendar: [], data_guide: [], brief: [], stores: [], inventory: [], unsubs: [],
   t0: null, doneAt: null, f: { store: "all", cat: "all", st: "all" }, city: null, xpSeen: null, lvlSeen: null, celebrated: false };
 const $ = id => document.getElementById(id);
@@ -198,6 +219,8 @@ const day = n => new Date(PLAN + n * 864e5).toLocaleDateString("en-IN", { day: "
 const num = n => Math.round(n * 10) / 10;
 const cov = (on, vel) => vel > 0 ? on / vel : Infinity;
 const dd = d => isFinite(d) ? `${num(d)} days` : "no recent sales";
+const safe = (fn) => { try { return fn(); } catch (e) { console.error(e); return `<div class="empty">Something went wrong on this screen: ${esc(e.message)}</div>`; } };
+const demoNote = () => S.inventory.length ? "" : `<p class="sum">${ic("alert")} Demo data: the inventory collection is empty, so this shows 20 sample stores in 6 cities.</p>`;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 4000); }
 const ls = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k + S.user.uid) ?? "null") ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k + S.user.uid, JSON.stringify(v)); } catch {} } };
 const getSeen = () => ls.get("sm-seen-", []);
@@ -265,6 +288,7 @@ const outTxt = (o, withIt) => o === null ? `lasts ${HORIZON}+ days` : `runs out 
 /* ---------- inventory (from the inventory collection, or derived from the moves' evidence) ---------- */
 function inventory() {
   if (S.inventory.length) return S.inventory.map(r => ({ store: r.store, sku: r.sku, onHand: r.onHand || 0, inTransit: r.inTransit || 0, vel: r.vel || 0, age: r.ageDays || 0, sold28: r.sold28 ?? Math.round((r.vel || 0) * 28), mrp: r.mrp || 0 }));
+  return DEMO.inv;
   const map = new Map(), put = (store, sku, o) => { const k = store + "|" + sku; map.set(k, { age: 0, inTransit: 0, ...map.get(k), store, sku, ...o }); };
   for (const m of S.moves) {
     const e = m.evidence || {};
@@ -276,7 +300,8 @@ function inventory() {
 }
 const health = r => { const c = cov(r.onHand, r.vel); return c < 14 ? "hot" : (c > SLOW_COVER || (r.age > 60 && r.sold28 <= 2)) && r.onHand > 0 ? "slow" : "ok"; };
 const HL = { hot: ["Running low", "hot"], slow: ["Not selling", "slow"], ok: ["Healthy", "okp"] };
-const cityOf = id => { const s = S.stores.find(x => x.id === id), p = String(id).split("-")[0].toUpperCase(), c = CITIES[p];
+const storesList = () => S.stores.length ? S.stores : DEMO.stores;
+const cityOf = id => { const s = storesList().find(x => x.id === id), p = String(id).split("-")[0].toUpperCase(), c = CITIES[p];
   return { name: s?.city || c?.[0] || p, lng: s?.lng ?? c?.[1] ?? null, lat: s?.lat ?? c?.[2] ?? null, tier: s?.tier || "", cap: s?.capacity || 0 }; };
 function storeAgg(inv) {
   const g = {};
@@ -394,10 +419,10 @@ function render() {
   const care = ms.filter(m => check(m).approval || check(m).v.length).length, urg = ms.filter(urgent).length;
   const heroTxt = { regional_manager: () => { const a = storeAgg(inventory()); return a.length ? `${a.length} stores in view. ${a.reduce((s, x) => s + x.slow, 0)} stock lines are not selling and ${a.reduce((s, x) => s + x.hot, 0)} are running low.` : "No inventory to show yet."; } }[S.role];
   $("hero").innerHTML = banner(heroTxt ? heroTxt() : ms.length ? `Today there are ${ms.length} suggested moves, ${units} units worth ${inr(val)}. ${urg ? `${urg} ${urg === 1 ? "is" : "are"} urgent and need a shipment approval. ` : ""}${care ? `${care} need${care === 1 ? "s" : ""} a careful look.` : "None need extra care."}` : "No moves yet. They appear here as soon as the engine writes them.");
-  $("game").innerHTML = game();
+  $("game").innerHTML = safe(game);
   $("tabs").innerHTML = tabs().map(([k, l, i]) => `<button class="tab" role="tab" aria-selected="${S.tab === k}" data-tab="${k}">${ic(i)}${l}</button>`).join("");
   const v = { today: () => today(true), all: () => today(false), alerts, pick, returns, findings, rules, about, check: hackCheck, fc: fcView, network, inv: invView, perf }[S.tab] || (() => "");
-  $("panel").innerHTML = v(); wire(); tick();
+  $("panel").innerHTML = safe(v); wire(); tick();
 }
 function moveCard(m, edit) {
   const c = check(m), u = urgent(m), q = edit && m.status === "proposed" ? `<input class="qty" type="number" min="1" max="${avail(m) ?? ""}" value="${m.qty}" data-qty="${esc(m.id)}" aria-label="Quantity">` : m.qty;
@@ -484,13 +509,13 @@ function about() {
 function network() {
   const agg = storeAgg(inventory()); if (!agg.length) return `<div class="empty">No inventory yet. It appears once the engine writes moves or the inventory collection.</div>`;
   const known = agg.filter(a => a.lng != null), unk = agg.filter(a => a.lng == null);
-  const cities = {}; agg.forEach(a => (cities[a.name] ||= { name: a.name, lng: a.lng, lat: a.lat, units: 0, hot: 0, slow: 0, ok: 0, stores: [] }, cities[a.name]).units += a.units, ["hot", "slow", "ok"].forEach(k => cities[a.name][k] += a[k]), cities[a.name].stores.push(a));
+  const cities = {}; agg.forEach(a => { const c = cities[a.name] ||= { name: a.name, lng: a.lng, lat: a.lat, units: 0, hot: 0, slow: 0, ok: 0, stores: [] }; c.units += a.units; c.hot += a.hot; c.slow += a.slow; c.ok += a.ok; c.stores.push(a); });
   const cl = Object.values(cities), P = c => [(c.lng - 67) * 15, (37 - c.lat) * 15], maxU = Math.max(1, ...cl.map(c => c.units));
   let un = 0; const pos = c => c.lng == null ? [30 + 80 * un++, 480] : P(c);
   const dots = cl.map(c => { const [x, y] = pos(c), r = 7 + c.units / maxU * 13, col = c.hot + c.slow === 0 ? "#2f6f43" : c.slow >= c.hot ? "#d9801f" : "#b3261e";
     return `<g data-city="${esc(c.name)}" style="cursor:pointer" tabindex="0" role="button" aria-label="${esc(c.name)}"><circle cx="${x}" cy="${y}" r="${r}" fill="${col}" fill-opacity=".85" stroke="${S.city === c.name ? "#2b2420" : "#fff"}" stroke-width="${S.city === c.name ? 3 : 2}"/><text x="${x}" y="${y - r - 4}" text-anchor="middle" font-size="12" font-weight="700" fill="#2b2420">${esc(c.name)}</text></g>`; }).join("");
   const sel = cities[S.city] || cl[0], stores = sel.stores;
-  return `<div class="two"><div class="mapbox"><svg viewBox="0 0 500 500" role="img" aria-label="Map of stores"><polygon points="${OUTLINE.map(p => P({ lng: p[0], lat: p[1] }).join(",")).join(" ")}" fill="#fffaf0" stroke="#c9b88f" stroke-width="2"/>${dots}</svg>
+  return demoNote() + `<div class="two"><div class="mapbox"><svg viewBox="0 0 500 500" role="img" aria-label="Map of stores"><polygon points="${OUTLINE.map(p => P({ lng: p[0], lat: p[1] }).join(",")).join(" ")}" fill="#fffaf0" stroke="#c9b88f" stroke-width="2"/>${dots}</svg>
     <p class="sum" style="margin:6px 8px">Schematic map. Dot size is units on hand. ${ic("check", "color:#2f6f43")} healthy, ${ic("alert", "color:#d9801f")} mostly slow, ${ic("alert", "color:#b3261e")} mostly running low.${unk.length || cl.some(c => c.lng == null) ? " Cities without coordinates sit along the bottom." : ""}</p></div>
     <div><section class="grp"><h3>${ic("pin")}${esc(sel.name)}</h3><p class="sum">${sel.stores.length} store${sel.stores.length === 1 ? "" : "s"}, ${sel.units} units</p>${stores.map(s => {
       const pc = s.cap ? Math.min(100, s.units / s.cap * 100) : null;
@@ -505,7 +530,7 @@ function filtered() {
 function invView() {
   const all = inventory(), stores = [...new Set(all.map(r => r.store))].sort(), cats = [...new Set(all.map(r => catOf(r.sku)[0]))].sort(), rows = filtered().sort((a, b) => cov(a.onHand, a.vel) - cov(b.onHand, b.vel));
   const opt = (v, cur, l) => `<option value="${esc(v)}" ${cur === v ? "selected" : ""}>${esc(l ?? v)}</option>`;
-  return `<div class="tools"><label>Store <select id="fStore">${opt("all", S.f.store, "All stores")}${stores.map(s => opt(s, S.f.store)).join("")}</select></label>
+  return demoNote() + `<div class="tools"><label>Store <select id="fStore">${opt("all", S.f.store, "All stores")}${stores.map(s => opt(s, S.f.store)).join("")}</select></label>
     <label>Category <select id="fCat">${opt("all", S.f.cat, "All")}${cats.map(c => opt(c, S.f.cat)).join("")}</select></label>
     <label>Status <select id="fSt">${opt("all", S.f.st, "All")}${opt("hot", S.f.st, "Running low")}${opt("slow", S.f.st, "Not selling")}${opt("ok", S.f.st, "Healthy")}</select></label><span class="r sum" style="margin:0">${rows.length} lines, ${rows.reduce((a, r) => a + r.onHand, 0)} units</span></div>
   ${rows.length ? `<div class="scroll"><table><tr><th></th><th>SKU</th><th>Store</th><th class="n">On hand</th><th class="n">Sells / day</th><th class="n">Cover</th><th class="n">Age (days)</th><th>Status</th></tr>${rows.slice(0, 150).map(r => { const h = HL[health(r)];
@@ -513,8 +538,8 @@ function invView() {
 }
 function perf() {
   const all = inventory().filter(r => r.onHand > 0 || r.vel > 0), best = [...all].sort((a, b) => b.vel - a.vel).slice(0, 6), slow = all.filter(r => health(r) === "slow").sort((a, b) => b.onHand * b.mrp - a.onHand * a.mrp);
-  const mine = S.moves.filter(m => m.createdBy === S.user.email);
-  return `<div class="two"><section class="grp"><h3>${ic("up")}Selling well</h3><p class="sum">Fastest sellers right now.</p>${best.map(r => `<div class="card ok" style="margin-bottom:8px;display:flex;gap:12px;align-items:center">${artTile(r.sku)}<div><h4>${esc(r.sku)} at ${esc(r.store)}</h4><p style="margin:0">${num(r.vel)} a day, ${r.onHand} on hand, lasts ${dd(cov(r.onHand, r.vel))}</p></div></div>`).join("") || `<div class="empty">No sales data yet.</div>`}</section>
+  const mine = [...S.moves.filter(m => m.createdBy === S.user.email), ...(S.localReloc || [])];
+  return demoNote() + `<div class="two"><section class="grp"><h3>${ic("up")}Selling well</h3><p class="sum">Fastest sellers right now.</p>${best.map(r => `<div class="card ok" style="margin-bottom:8px;display:flex;gap:12px;align-items:center">${artTile(r.sku)}<div><h4>${esc(r.sku)} at ${esc(r.store)}</h4><p style="margin:0">${num(r.vel)} a day, ${r.onHand} on hand, lasts ${dd(cov(r.onHand, r.vel))}</p></div></div>`).join("") || `<div class="empty">No sales data yet.</div>`}</section>
     <section class="grp"><h3>${ic("down")}Not selling</h3><p class="sum">${slow.length} lines are older than 60 days with almost no sales, or cover more than ${SLOW_COVER} days. Relocate them to a store where they sell.</p>${slow.slice(0, 12).map(r => `<div class="card warn" style="margin-bottom:8px;display:flex;gap:12px;align-items:center">${artTile(r.sku)}<div style="flex:1"><h4>${esc(r.sku)} at ${esc(r.store)}</h4><p style="margin:0">${r.onHand} on hand, ${r.sold28} sold in 28 days${r.age ? `, ${r.age} days old` : ""}</p></div><button class="btn sm primary" data-reloc="${esc(r.store)}|${esc(r.sku)}">${ic("swap")}Relocate</button></div>`).join("") || `<div class="empty">No slow stock found. Nice work.</div>`}</section></div>
     ${mine.length ? `<section class="grp"><h3>${ic("trophy")}Your relocations</h3>${mine.map(m => `<p class="sum">${m.qty} x ${esc(m.sku)}, ${esc(m.from)} to ${esc(m.to)}: <b>${esc(m.status)}</b></p>`).join("")}</section>` : ""}`;
 }
@@ -535,7 +560,7 @@ $("relForm").onsubmit = async e => {
   try { await setDoc(doc(db, "moves", "reloc-" + Date.now()), { type: "store_store", sku: src.sku, from: src.store, to, qty, mrp: src.mrp || 0, status: "proposed", exception: "Regional manager relocation", createdBy: S.user.email, createdAt: serverTimestamp(),
       evidence: { srcOnHand: src.onHand, srcVel: src.vel, dstOnHand: d.onHand, dstVel: d.vel } });
     $("relDlg").close(); toast("Sent to the merchandiser for approval."); confetti(); }
-  catch (err) { toast("Could not create the move: " + (err.code || err.message)); }
+  catch (err) { (S.localReloc ||= []).push({ sku: src.sku, from: src.store, to, qty, status: "saved on this screen only" }); $("relDlg").close(); toast("Database refused the new move (" + (err.code || err.message) + "). Kept on this screen only. Update the Firestore rules from the file header."); render(); }
 };
 
 /* ---------- hackathon check: live test of the brief's rules against the moves on screen ---------- */
