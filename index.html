@@ -216,14 +216,15 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, w
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ---------- 1. FIREBASE CONFIG: paste yours here ---------- */
-const FIREBASE_CONFIG = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
-};
+ const firebaseConfig = {
+    apiKey: "AIzaSyA45HZcIK_s_z0sPN0e6yKs7YfxIDOxDFE",
+    authDomain: "manyavar-vch3.firebaseapp.com",
+    projectId: "manyavar-vch3",
+    storageBucket: "manyavar-vch3.firebasestorage.app",
+    messagingSenderId: "793225546726",
+    appId: "1:793225546726:web:d02aec86444a035f556427",
+    measurementId: "G-XJ82L4479E"
+  };
 const configured = !FIREBASE_CONFIG.apiKey.startsWith("YOUR_");
 let app, auth, db;
 if (configured) { app = initializeApp(FIREBASE_CONFIG); auth = getAuth(app); db = getFirestore(app); }
