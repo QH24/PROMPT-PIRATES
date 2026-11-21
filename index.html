@@ -7,578 +7,353 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
-
 <!--
-  SETUP (read once)
-  1. Firebase console > Build > Authentication > Sign-in method > enable Google.
-  2. Authentication > Settings > Authorized domains: add "localhost" (or your host).
-  3. Build > Firestore Database > create. Paste your web-app config into FIREBASE_CONFIG below.
-  4. Serve over http, NOT file:// (Google sign-in popups do not work from file://):
-         python -m http.server 5500      then open http://localhost:5500
-  5. FOR THE FIRST UPLOAD ONLY: in Firestore > Rules paste the open rules below, Publish, click the
-     Upload button, then replace them with the stricter rules in step 6.
-         rules_version = '2';
-         service cloud.firestore {
-           match /databases/{db}/documents {
-             match /{document=**} { allow read, write: if true; }
-           }
-         }
-  6. Stricter Firestore rules to use after seeding (the upload button will no longer work with these):
-       rules_version = '2';
-       service cloud.firestore {
-         match /databases/{db}/documents {
-           match /users/{uid} {
-             allow read: if request.auth != null && request.auth.uid == uid;
-             // role can be set once, at first login, to a known value; never changed from the client
-             allow create: if request.auth != null && request.auth.uid == uid
-               && request.resource.data.role in ['merchandiser','warehouse','area_manager'];
-             allow update: if false;
-           }
-           match /{col}/{id} {
-             allow read: if request.auth != null && col in ['moves','findings','rules','calendar','data_guide','brief'];
-             // merchandisers decide moves; seeding needs temporary open writes (see seed button)
-             allow update: if request.auth != null && col == 'moves'
-               && get(/databases/$(db)/documents/users/$(request.auth.uid)).data.role == 'merchandiser';
-           }
-         }
-       }
+  SETUP: serve over http (python -m http.server 5500, then open http://localhost:5500), not file://.
+  Firebase console: enable Google sign-in, add "localhost" to Authorized domains, create Firestore.
+  Firestore rules (final):
+    rules_version = '2';
+    service cloud.firestore { match /databases/{db}/documents {
+      match /users/{uid} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow create: if request.auth != null && request.auth.uid == uid
+          && request.resource.data.role in ['merchandiser','warehouse','area_manager'];
+      }
+      match /{col}/{id} {
+        allow read: if request.auth != null && col in ['moves','findings','rules','calendar','data_guide','brief'];
+        allow update: if request.auth != null && col == 'moves'
+          && get(/databases/$(db)/documents/users/$(request.auth.uid)).data.role == 'merchandiser';
+      }
+    } }
 -->
-
 <style>
-:root{
-  --ink:#2b2420; --ink-soft:#6b5f56; --paper:#f6efe2; --panel:#fffaf0; --line:#e3d6bf;
-  --maroon:#6e1f2b; --maroon-dark:#4d1520; --saffron:#d9801f; --teal:#2f6f68; --red:#b3261e; --ok:#2f6f43;
-  --serif:"Playfair Display",Georgia,"Times New Roman",serif;
-  --sans:"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-}
-*{box-sizing:border-box}
-html,body{margin:0}
-body{font-family:var(--sans);background:var(--paper);color:var(--ink);line-height:1.5;font-size:15px}
-button,input,select,textarea{font:inherit;color:inherit}
-:focus-visible{outline:3px solid var(--saffron);outline-offset:2px}
-[hidden]{display:none!important}
-
-/* header */
-.top{background:var(--maroon);color:#fbeedb;display:flex;align-items:center;gap:16px;padding:12px 24px;flex-wrap:wrap}
-.brand{font-family:var(--serif);font-size:24px;font-weight:700;letter-spacing:.2px;margin-right:auto}
-.brand small{font-family:var(--sans);font-weight:400;font-size:13px;opacity:.75;margin-left:10px}
-.who{display:flex;align-items:center;gap:10px;font-size:14px}
-.who img{width:30px;height:30px;border-radius:50%;border:2px solid #fbeedb55}
-.rolechip{background:#fbeedb;color:var(--maroon-dark);padding:2px 10px;border-radius:999px;font-weight:700;font-size:13px}
-.btn{border:1px solid var(--line);background:var(--panel);padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:500}
-.btn:hover{border-color:var(--maroon)}
-.btn.primary{background:var(--saffron);border-color:var(--saffron);color:#2b1a05;font-weight:700}
-.btn.primary:hover{background:#c27015}
-.btn.ghost{background:transparent;color:#fbeedb;border-color:#fbeedb66}
-.btn.sm{padding:3px 10px;font-size:13px}
-.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-
-/* login */
-.login{min-height:calc(100vh - 56px);display:grid;place-items:center;padding:24px}
-.login-card{max-width:460px;text-align:left}
-.login-card h1{font-family:var(--serif);font-size:48px;line-height:1.05;margin:0 0 12px;color:var(--maroon)}
-.login-card p{color:var(--ink-soft);margin:0 0 24px;max-width:40ch}
-.gbtn{display:inline-flex;align-items:center;gap:12px;background:#fff;border:1px solid #cfc3ad;border-radius:6px;padding:10px 18px;font-weight:700;cursor:pointer}
-.gbtn:hover{border-color:var(--maroon)}
-.gbtn svg{width:20px;height:20px}
-.cfgwarn{background:#fde8e6;border:1px solid var(--red);color:var(--red);padding:10px 14px;border-radius:6px;margin-bottom:18px;font-size:14px}
-
-/* layout */
-main{max-width:1280px;margin:0 auto;padding:24px}
-.stats{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:20px;align-items:baseline}
-.stat b{font-family:var(--serif);font-size:30px;display:block;line-height:1.1}
-.stat span{font-size:13px;color:var(--ink-soft)}
-.tabs{display:flex;gap:4px;border-bottom:2px solid var(--line);margin-bottom:16px}
-.tab{background:none;border:0;padding:8px 16px;cursor:pointer;font-weight:500;color:var(--ink-soft);border-bottom:3px solid transparent;margin-bottom:-2px}
-.tab[aria-selected=true]{color:var(--maroon);border-bottom-color:var(--maroon);font-weight:700}
-.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
-.bar .grow{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
-select,input[type=number],textarea{background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
-
-/* table */
-.tablewrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px}
-table{border-collapse:collapse;width:100%;min-width:900px}
-th{font-weight:700;font-size:13px;text-align:left;padding:10px 12px;border-bottom:2px solid var(--line);color:var(--ink-soft);white-space:nowrap}
-td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
-tr:last-child td{border-bottom:0}
-td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
-td.why{max-width:420px;font-size:14px}
-.type{font-weight:700;white-space:nowrap}
-.type.wh_store{color:var(--teal)} .type.store_store{color:var(--maroon)} .type.pull_back{color:var(--saffron)}
-.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);margin:0 4px 4px 0;background:#fff}
-.tag.warn{border-color:var(--saffron);color:#8a4b00;background:#fff3de}
-.tag.bad{border-color:var(--red);color:var(--red);background:#fde8e6}
-.tag.good{border-color:var(--ok);color:var(--ok);background:#e6f4ea}
-tr.violation td{background:#fdf0ee}
-tr.skipped td{opacity:.55}
-.actions{display:flex;gap:6px;white-space:nowrap}
-.qty{width:70px}
-.empty{padding:36px;text-align:center;color:var(--ink-soft)}
-
-/* cards */
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
-.card{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--teal);border-radius:8px;padding:14px 16px}
-.card.high{border-left-color:var(--red)} .card.med{border-left-color:var(--saffron)}
-.card h3{margin:0 0 6px;font-size:16px}
-.card p{margin:0;font-size:14px;color:var(--ink-soft)}
-.group{margin-bottom:22px}
-.group h3{font-family:var(--serif);font-size:20px;margin:0 0 8px}
-
-/* dialog */
-dialog{border:0;border-radius:10px;padding:24px;max-width:480px;width:calc(100% - 32px);background:var(--panel);color:var(--ink);box-shadow:0 20px 60px #0006}
-dialog::backdrop{background:#2b242099}
-dialog h2{font-family:var(--serif);margin:0 0 6px;font-size:26px}
-dialog p{margin:0 0 16px;color:var(--ink-soft)}
-.roleopt{display:block;border:2px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;cursor:pointer;background:#fff}
-.roleopt:has(input:checked){border-color:var(--maroon);background:#fbeef0}
-.roleopt input{margin-right:8px;accent-color:var(--maroon)}
-.roleopt b{display:block} .roleopt span{font-size:13px;color:var(--ink-soft);margin-left:24px}
-.dlgbtns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
-
+:root{--ink:#2b2420;--soft:#6b5f56;--paper:#f6efe2;--panel:#fffaf0;--line:#e3d6bf;--maroon:#6e1f2b;--saffron:#d9801f;--teal:#2f6f68;--red:#b3261e;--ok:#2f6f43;
+--serif:"Playfair Display",Georgia,serif;--sans:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;font-family:var(--sans);background:var(--paper);color:var(--ink);line-height:1.5;font-size:15px}
+button,input,select{font:inherit;color:inherit}:focus-visible{outline:3px solid var(--saffron);outline-offset:2px}[hidden]{display:none!important}
+.top{background:var(--maroon);color:#fbeedb;display:flex;align-items:center;gap:14px;padding:12px 24px;flex-wrap:wrap}
+.brand{font-family:var(--serif);font-size:24px;font-weight:700;margin-right:auto}.brand small{font:400 13px var(--sans);opacity:.75;margin-left:10px}
+.who{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.who img{width:30px;height:30px;border-radius:50%}
+.chip{background:#fbeedb;color:var(--maroon);padding:2px 10px;border-radius:999px;font-weight:700;font-size:13px}
+.btn{border:1px solid var(--line);background:var(--panel);padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:500}.btn:hover{border-color:var(--maroon)}
+.btn.primary{background:var(--saffron);border-color:var(--saffron);color:#2b1a05;font-weight:700}.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.ghost{background:transparent;color:#fbeedb;border-color:#fbeedb77}.btn.sm{padding:4px 12px;font-size:14px}.btn:disabled{opacity:.5;cursor:not-allowed}
+.login{min-height:calc(100vh - 60px);display:grid;place-items:center;padding:24px}.login div{max-width:460px}
+.login h1{font:700 44px/1.1 var(--serif);color:var(--maroon);margin:0 0 12px}.login p{color:var(--soft);margin:0 0 22px}
+.gbtn{display:inline-flex;gap:12px;align-items:center;background:#fff;border:1px solid #cfc3ad;border-radius:6px;padding:10px 18px;font-weight:700;cursor:pointer}
+main{max-width:1100px;margin:0 auto;padding:22px}
+.hero{font:600 24px/1.3 var(--serif);margin:0 0 16px;max-width:34em}
+.game{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:18px}
+.gtop{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-bottom:8px}.gtop b{font:700 20px var(--serif)}.gtop span{color:var(--soft);font-size:14px}
+.bar{height:12px;background:#eadfc9;border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ok);transition:width .4s}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.badge{font-size:13px;padding:2px 10px;border-radius:99px;border:1px solid var(--line);color:#a09484;background:#fff}.badge.got{border-color:var(--saffron);background:#fff3de;color:#7a4300;font-weight:700}
+.tabs{display:flex;gap:2px;border-bottom:2px solid var(--line);margin-bottom:16px;overflow-x:auto}
+.tab{background:none;border:0;padding:8px 14px;cursor:pointer;color:var(--soft);border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap}
+.tab[aria-selected=true]{color:var(--maroon);font-weight:700;border-bottom-color:var(--maroon)}
+.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}.tools .r{margin-left:auto}
+select,input[type=number]{background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.grp{margin-bottom:26px}.grp h3{font:700 21px var(--serif);margin:0}.sum{margin:0 0 10px;color:var(--soft)}
+.mv{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--teal);border-radius:8px;padding:12px 16px;margin-bottom:10px}
+.mv.store_store{border-left-color:var(--maroon)}.mv.pull_back{border-left-color:var(--saffron)}.mv.bad{background:#fdf0ee}.mv.skipped{opacity:.55}
+.mvh{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;font-weight:700}.mvh em{font-style:normal;color:var(--soft);font-weight:500}
+.why{margin:4px 0}.nums{margin:2px 0 8px;color:var(--soft);font-size:14px}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);margin:0 4px 4px 0;background:#fff}
+.tag.warn{border-color:var(--saffron);background:#fff3de;color:#7a4300}.tag.bad{border-color:var(--red);background:#fde8e6;color:var(--red)}.tag.good{border-color:var(--ok);background:#e6f4ea;color:var(--ok)}
+.acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}.qty{width:72px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--teal);border-radius:8px;padding:12px 16px}
+.card.high{border-left-color:var(--red)}.card.med{border-left-color:var(--saffron)}.card h4{margin:0 0 4px;font-size:16px}.card p{margin:0 0 8px;color:var(--soft);font-size:14px}
+.card.seen{opacity:.6}
+table{border-collapse:collapse;width:100%;background:var(--panel);border:1px solid var(--line)}td,th{padding:8px 12px;border-bottom:1px solid var(--line);text-align:left}td.n,th.n{text-align:right}
+.empty{padding:30px;text-align:center;color:var(--soft);background:var(--panel);border:1px dashed var(--line);border-radius:8px}
+dialog{border:0;border-radius:10px;padding:24px;max-width:480px;width:calc(100% - 32px);background:var(--panel);color:var(--ink)}dialog::backdrop{background:#2b242099}
+dialog h2{font:700 26px var(--serif);margin:0 0 6px}dialog p{margin:0 0 14px;color:var(--soft)}
+.roleopt{display:block;border:2px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:10px;cursor:pointer;background:#fff}.roleopt:has(input:checked){border-color:var(--maroon);background:#fbeef0}
+.roleopt span{display:block;font-size:13px;color:var(--soft);margin-left:24px}.dbtn{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:6px;z-index:50;max-width:90vw}
-
-/* DELETE-SEED-BUTTON CSS START */
-#seedBar{background:#fff3de;border-bottom:2px dashed var(--red);padding:12px 24px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-#seedBtn{font-size:15px;font-weight:700;padding:10px 18px;border:2px solid var(--red);background:#fff;color:var(--red);border-radius:8px;cursor:pointer}
-#seedBtn:hover{background:var(--red);color:#fff}
-#seedBtn:disabled{opacity:.6;cursor:wait}
-#seedStatus{font-size:14px;font-weight:500}
-/* DELETE-SEED-BUTTON CSS END */
-
-@media (max-width:640px){.top{padding:10px 14px}main{padding:14px}.login-card h1{font-size:38px}}
-@media (prefers-reduced-motion:no-preference){dialog[open]{animation:pop .18s ease-out}@keyframes pop{from{transform:translateY(8px);opacity:0}}}
+@media(max-width:640px){.top,main{padding:12px}.login h1{font-size:34px}}
 </style>
 </head>
 <body>
-
 <header class="top">
   <div class="brand">Stock Mover<small>Right stock. Right store. Right size.</small></div>
   <div class="who" id="who" hidden>
-    <img id="avatar" alt="" referrerpolicy="no-referrer">
-    <span id="uname"></span>
-    <span class="rolechip" id="rolechip"></span>
-    <button class="btn ghost sm" id="signOut">Sign out</button>
+    <img id="avatar" alt="" referrerpolicy="no-referrer"><span id="uname"></span><span class="chip" id="rolechip"></span>
+    <button class="btn ghost sm" id="switchBtn">Switch account</button><button class="btn ghost sm" id="signOut">Sign out</button>
   </div>
 </header>
 
-<!-- DELETE-SEED-BUTTON HTML START -->
-<div id="seedBar">
-  <strong>Temporary setup:</strong>
-  <button id="seedBtn" type="button">Upload PDF + demo data to Firebase</button>
-  <span id="seedStatus">Click once. This works with or without signing in, as long as your Firestore rules allow writes.</span>
-</div>
-<!-- DELETE-SEED-BUTTON HTML END -->
+<section class="login" id="loginView"><div>
+  <h1>Today's stock moves, ready to approve.</h1>
+  <p>Sign in with Google. Your role decides what you see: the merchandiser's approval list, the warehouse pick list, or an area manager's view of alerts.</p>
+  <button class="gbtn" id="googleBtn">Sign in with Google</button>
+  <p id="cfgWarn" hidden style="color:#b3261e;margin-top:16px">Firebase is not configured. Paste your config into FIREBASE_CONFIG in this file.</p>
+</div></section>
 
-<!-- Signed-out screen -->
-<section class="login" id="loginView">
-  <div class="login-card">
-    <div class="cfgwarn" id="cfgWarn" hidden>Firebase is not configured. Paste your web-app config into <code>FIREBASE_CONFIG</code> in this file.</div>
-    <h1>Today's stock moves, ready to approve.</h1>
-    <p>Sign in with Google. Your role decides what you see: the merchandiser's approval list, the warehouse pick list, or an area manager's read-only view.</p>
-    <button class="gbtn" id="googleBtn">
-      <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.500 0 12-2.100 16-5.800l-7.600-5.900c-2.100 1.400-4.900 2.300-8.400 2.300-6.300 0-11.600-4.100-13.500-9.800l-7.900 6.100C6.500 42.600 14.600 48 24 48z"/></svg>
-      Sign in with Google
-    </button>
-  </div>
-</section>
+<main id="appView" hidden><div id="hero"></div><div id="game"></div><div class="tabs" role="tablist" id="tabs"></div><div id="panel"></div></main>
 
-<!-- Signed-in app -->
-<main id="appView" hidden>
-  <div class="stats" id="stats"></div>
-  <div class="tabs" role="tablist" id="tabs"></div>
-  <div id="panel"></div>
-</main>
-
-<!-- First-login role popup (cannot be dismissed) -->
-<dialog id="roleDlg">
-  <h2>Welcome. What's your role?</h2>
-  <p>This sets what you see in Stock Mover. You choose once.</p>
-  <form id="roleForm">
-    <div id="roleOpts"></div>
-    <div class="dlgbtns"><button class="btn primary" type="submit">Save role and continue</button></div>
-  </form>
-</dialog>
-
-<!-- Skip-reason popup -->
-<dialog id="skipDlg">
-  <h2>Skip this move</h2>
-  <p id="skipWhat"></p>
-  <form id="skipForm">
-    <label>Reason<br>
-      <select id="skipReason" style="width:100%">
-        <option>Stock needed at the giving store</option>
-        <option>Wrong size or style for this store</option>
-        <option>Waiting for physical stock count</option>
-        <option>Too close to a festival to move</option>
-        <option>Other</option>
-      </select>
-    </label>
-    <div class="dlgbtns">
-      <button class="btn" type="button" id="skipCancel">Cancel</button>
-      <button class="btn primary" type="submit">Skip move</button>
-    </div>
-  </form>
-</dialog>
-
+<dialog id="roleDlg"><h2>Welcome. What's your role?</h2><p>This decides what you see. You choose once.</p>
+  <form id="roleForm"><div id="roleOpts"></div><div class="dbtn"><button class="btn primary" type="submit">Save and continue</button></div></form></dialog>
+<dialog id="skipDlg"><h2>Skip this move</h2><p id="skipWhat"></p>
+  <form id="skipForm"><label>Why?<br><select id="skipReason" style="width:100%"><option>Stock needed at the giving store</option><option>Wrong size or style for this store</option><option>Waiting for a physical stock count</option><option>Too close to a festival to move</option><option>Other</option></select></label>
+  <div class="dbtn"><button class="btn" type="button" id="skipCancel">Cancel</button><button class="btn primary" type="submit">Skip move</button></div></form></dialog>
 <div id="toast" hidden></div>
-
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
-  from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-analytics.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, writeBatch, serverTimestamp }
-  from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
 
-/* ---------- 1. FIREBASE CONFIG: paste yours here ---------- */
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyA45HZcIK_s_z0sPN0e6yKs7YfxIDOxDFE",
-  authDomain: "manyavar-vch3.firebaseapp.com",
-  projectId: "manyavar-vch3",
-  storageBucket: "manyavar-vch3.firebasestorage.app",
-  messagingSenderId: "793225546726",
-  appId: "1:793225546726:web:d02aec86444a035f556427",
-  measurementId: "G-XJ82L4479E"
+  apiKey: "AIzaSyA45HZcIK_s_z0sPN0e6yKs7YfxIDOxDFE", authDomain: "manyavar-vch3.firebaseapp.com", projectId: "manyavar-vch3",
+  storageBucket: "manyavar-vch3.firebasestorage.app", messagingSenderId: "793225546726",
+  appId: "1:793225546726:web:d02aec86444a035f556427", measurementId: "G-XJ82L4479E"
 };
-const configured = !FIREBASE_CONFIG.apiKey.startsWith("YOUR_");
-let app, auth, db;
-if (configured) { app = initializeApp(FIREBASE_CONFIG); auth = getAuth(app); db = getFirestore(app); try { getAnalytics(app); } catch (e) {} }
-else document.getElementById("cfgWarn").hidden = false;
+const app = initializeApp(FIREBASE_CONFIG), auth = getAuth(app), db = getFirestore(app);
+import("https://www.gstatic.com/firebasejs/13.4.0/firebase-analytics.js").then(m => m.getAnalytics(app)).catch(() => {});
 
-/* ---------- 2. Roles, rules ---------- */
 const ROLES = {
-  merchandiser: { label: "Merchandiser", blurb: "Approve, skip or edit the daily move list." },
-  warehouse:    { label: "Warehouse (WH-KOL)", blurb: "See the pick list of approved warehouse dispatches." },
-  area_manager: { label: "Area manager", blurb: "Read-only view of moves and data alerts for your stores." }
+  merchandiser: ["Merchandiser", "Approve, skip or edit the daily list of moves."],
+  warehouse: ["Warehouse (WH-KOL)", "See what to pick and what is coming back."],
+  area_manager: ["Area manager", "See the alerts that matter for your stores."]
 };
-const TYPE_LABEL = { wh_store: "Warehouse to store", store_store: "Store to store", pull_back: "Pull-back" };
-const APPROVAL_LIMIT = 100000;   // Rs, per move line at MRP; strictly greater needs approval
-const MIN_DONOR_COVER = 30;      // days, store-to-store donor floor
+const TYPES = { wh_store: "Send from the warehouse", store_store: "Move between stores", pull_back: "Bring back to the warehouse" };
+const PLAN = Date.UTC(2026, 10, 1);               // planning day: stock is as of 31 Oct 2026
+const LIMIT = 100000, MIN_COVER = 30, GOAL_SECS = 600, AM_ALERTS = 5;
+const LEVELS = [[0, "Rookie"], [30, "Planner"], [80, "Merchandiser pro"], [150, "Stock master"]];
+const GENRES = { "Stores and people": ["stores", "area_managers", "salespeople", "roster_daily", "footfall_daily"],
+  "Products and sales": ["items", "bills", "bill_lines"], "Stock": ["stock_snapshot", "stock_weekly", "warehouse_inbound"], "Calendar and rules": ["calendar", "stock_rules"] };
+const WORDS = [["Velocity", "How many units a style and size sells per day in a store."], ["Cover", "How many days the stock on hand will last at that speed."],
+  ["In transit", "Already on its way. It counts as arriving and is never sent twice."], ["Minimum display", "The fewest units a store must keep on show in each category."],
+  ["Days in stock", "Days a SKU actually had stock. Zero sales with few days in stock means unavailable, not slow."]];
 
-/* ---------- 3. State ---------- */
-const S = { user: null, role: null, moves: [], findings: [], rules: [], calendar: [], tab: "", store: "all", unsubs: [] };
+const S = { user: null, role: null, tab: "", store: "all", moves: [], findings: [], rules: [], calendar: [], data_guide: [], brief: [], unsubs: [], t0: null, doneAt: null };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const inr = n => "Rs " + Math.round(n).toLocaleString("en-IN");
-function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 3500); }
+const day = n => new Date(PLAN + n * 864e5).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
+const num = n => Math.round(n * 10) / 10;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 4000); }
+const seenKey = () => "sm-seen-" + S.user.uid;
+const getSeen = () => { try { return JSON.parse(localStorage.getItem(seenKey()) || "[]"); } catch { return []; } };
 
-/* ---------- 4. Move logic: reason text and rule check come only from the move's own numbers ---------- */
-function reason(m) {
-  const e = m.evidence || {}, fest = e.festival ? `, ahead of ${e.festival}` : "";
-  if (m.type === "wh_store") {
-    const stock = e.unitLabel || m.sku;
-    const lead = `Sending ${m.qty} from ${m.from} (${e.lead}-day lead, ${e.whAvail} available)${fest}.`;
-    if (e.minDisplay && e.onHand < e.minDisplay)
-      return `${m.to} holds ${e.onHand} ${stock} against a minimum display of ${e.minDisplay}${e.vel ? `, selling ${e.vel}/day` : ", with thin sales history"}. ${lead}`;
-    return `${m.to} sells ${m.sku} at ${e.vel}/day and has ${e.onHand} on hand, which is ${(e.onHand / e.vel).toFixed(1)} days of cover. ${lead}`;
-  }
-  if (m.type === "store_store") {
-    const after = (e.srcOnHand - m.qty) / e.srcVel;
-    return `${m.to} sells ${m.sku} at ${e.dstVel}/day with ${e.dstOnHand} on hand (${(e.dstOnHand / e.dstVel).toFixed(1)} days); ${m.from} sells ${e.srcVel}/day and still keeps ${after.toFixed(0)} days of cover after giving ${m.qty}.`;
-  }
-  return `${m.qty} of ${m.sku} at ${m.from} are ${e.ageDays} days old with ${e.sold28} sales across ${e.inStock28} in-stock days in the last 28: genuinely slow, so pull back to ${m.to} (${e.lead}-day lead).`;
-}
-function available(m) {
-  const e = m.evidence || {};
-  return m.type === "wh_store" ? e.whAvail : m.type === "store_store" ? e.srcOnHand : e.onHand;
-}
+/* ---------- move logic: every sentence comes from the move's own numbers ---------- */
+const avail = m => { const e = m.evidence || {}; return m.type === "wh_store" ? e.whAvail : m.type === "store_store" ? e.srcOnHand : e.onHand; };
 function check(m) {
   const e = m.evidence || {}, v = [];
-  if (m.type === "store_store" && e.srcVel) {
-    const after = (e.srcOnHand - m.qty) / e.srcVel;
-    if (after < MIN_DONOR_COVER) v.push(`giving store left with ${after.toFixed(0)} days cover (minimum ${MIN_DONOR_COVER})`);
-  }
-  if (m.type !== "pull_back" && e.cap && e.dstUnits + m.qty > e.cap) v.push(`over capacity (${e.dstUnits + m.qty} of ${e.cap})`);
-  if (m.type === "pull_back" && e.inStock28 < 14) v.push("zero sales with few in-stock days is unavailable, not slow");
-  if (available(m) != null && m.qty > available(m)) v.push(`quantity exceeds the ${available(m)} available`);
+  if (m.type === "store_store" && e.srcVel) { const a = (e.srcOnHand - m.qty) / e.srcVel; if (a < MIN_COVER) v.push(`the giving store would keep only ${Math.floor(a)} days of stock (needs ${MIN_COVER})`); }
+  if (m.type === "store_store" && e.protectedStyle) v.push("this is a protected top-20 style at a flagship store");
+  if (m.type === "store_store" && e.srcMinDisplay != null && e.srcCategoryAfter != null && e.srcCategoryAfter < e.srcMinDisplay) v.push("the giving store would drop below its minimum display");
+  if (m.type !== "pull_back" && e.cap && e.dstUnits + m.qty > e.cap) v.push(`the store would hold ${e.dstUnits + m.qty} of ${e.cap} it can fit`);
+  if (m.type === "pull_back" && e.inStock28 < 14) v.push("zero sales with few days in stock means unavailable, not slow");
+  if (avail(m) != null && m.qty > avail(m)) v.push(`only ${avail(m)} available`);
   const value = m.qty * m.mrp;
-  return { violations: v, value, needsApproval: value > APPROVAL_LIMIT || !!m.exception };
+  return { v, value, approval: value > LIMIT || !!m.exception };
 }
+function reason(m) {
+  const e = m.evidence || {}, f = e.festival ? `, ahead of ${e.festival}` : "";
+  if (m.type === "wh_store") {
+    const low = e.minDisplay && e.onHand < e.minDisplay;
+    return (low ? `${m.to} holds ${e.onHand} ${e.unitLabel || m.sku} but must keep at least ${e.minDisplay}` : `${m.to} has only ${e.onHand} of ${m.sku}, about ${num(e.onHand / e.vel)} days of sales`) + `. Sending ${m.qty} from ${m.from}${f}.`;
+  }
+  if (m.type === "store_store") return `${m.to} is running short of ${m.sku} while ${m.from} has plenty and still keeps ${Math.floor((e.srcOnHand - m.qty) / e.srcVel)} days of stock after giving ${m.qty}.`;
+  return `${m.qty} of ${m.sku} at ${m.from} have sat for ${e.ageDays} days with ${e.sold28} sold in the last 28 days, even though it was in stock all that time. It is genuinely slow, so bring it back.`;
+}
+function facts(m) {
+  const e = m.evidence || {}, p = [];
+  if (m.type === "wh_store") p.push(e.vel ? `Sells ${e.vel} a day (velocity)` : "New store, not enough sales history yet", e.vel ? `stock lasts ${num(e.onHand / e.vel)} days (cover)` : null, e.inTransit ? `${e.inTransit} already on the way` : null);
+  if (m.type === "store_store") p.push(`Receiving store sells ${e.dstVel} a day, stock lasts ${num(e.dstOnHand / e.dstVel)} days`, `giving store sells ${e.srcVel} a day and keeps ${num((e.srcOnHand - m.qty) / e.srcVel)} days after the move`);
+  if (m.type === "pull_back") p.push(`${e.ageDays} days old`, `${e.sold28} sold in 28 days`, `in stock ${e.inStock28} of 28 days`);
+  if (e.lead != null) p.push(`arrives in ${e.lead} day${e.lead === 1 ? "" : "s"} (${day(e.lead)})`);
+  return p.filter(Boolean).join(", ");
+}
+const urgent = m => { const e = m.evidence || {}; return m.type === "wh_store" && ((e.vel && e.onHand / e.vel < 7) || (e.minDisplay && e.onHand < e.minDisplay)); };
+const rank = m => (urgent(m) ? 2e9 : 0) + (check(m).v.length ? 1e9 : 0) + m.qty * m.mrp;
 
-/* ---------- 5. Auth + role gate ---------- */
-$("googleBtn").onclick = async () => {
-  if (!configured) return toast("Add your Firebase config first.");
-  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-  catch (err) { toast(err.code === "auth/popup-closed-by-user" ? "Sign-in cancelled." : "Sign-in failed: " + (err.code || err.message)); }
-};
+/* ---------- sign in, switch account, role ---------- */
+const provider = () => { const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: "select_account" }); return p; };
+async function signIn() { try { await signInWithPopup(auth, provider()); } catch (e) { toast(e.code === "auth/popup-closed-by-user" ? "Sign-in cancelled." : "Sign-in failed: " + (e.code || e.message)); } }
+$("googleBtn").onclick = signIn;
+$("switchBtn").onclick = signIn;                    // account chooser; picking another account swaps the user
 $("signOut").onclick = () => signOut(auth);
 
-if (configured) onAuthStateChanged(auth, async user => {
-  stopListening();
-  S.user = user; S.role = null;
-  if (!user) return showLogin();
+onAuthStateChanged(auth, async user => {
+  stopListening(); S.user = user; S.role = null; S.t0 = S.doneAt = null;
+  if (!user) { $("loginView").hidden = false; $("appView").hidden = true; $("who").hidden = true; return; }
   try {
-    const snap = await getDoc(doc(db, "users", user.uid));     // read the role field from the backend
+    const snap = await getDoc(doc(db, "users", user.uid));
     const role = snap.exists() ? snap.data().role : null;
-    if (ROLES[role]) { S.role = role; startApp(); }
-    else askRole();                                             // first login
-  } catch (err) { toast("Could not read your profile: " + (err.code || err.message)); showLogin(); }
+    if (ROLES[role]) { S.role = role; startApp(); } else askRole();
+  } catch (e) { toast("Could not read your profile: " + (e.code || e.message)); }
 });
-
 function askRole() {
-  $("roleOpts").innerHTML = Object.entries(ROLES).map(([k, r], i) =>
-    `<label class="roleopt"><input type="radio" name="role" value="${k}" ${i === 0 ? "checked" : ""}><b>${esc(r.label)}</b><span>${esc(r.blurb)}</span></label>`).join("");
-  $("roleDlg").showModal();
+  $("roleOpts").innerHTML = Object.entries(ROLES).map(([k, [l, b]], i) => `<label class="roleopt"><input type="radio" name="role" value="${k}" ${i ? "" : "checked"}> <b>${l}</b><span>${b}</span></label>`).join("");
+  if (!$("roleDlg").open) $("roleDlg").showModal();
 }
-$("roleDlg").addEventListener("cancel", e => e.preventDefault());   // must pick a role
+$("roleDlg").addEventListener("cancel", e => e.preventDefault());
 $("roleForm").onsubmit = async e => {
   e.preventDefault();
-  const role = new FormData($("roleForm")).get("role");
+  const role = new FormData($("roleForm")).get("role"), u = S.user;
   try {
-    await setDoc(doc(db, "users", S.user.uid), {
-      uid: S.user.uid, name: S.user.displayName || "", email: S.user.email || "",
-      photo: S.user.photoURL || "", role, createdAt: serverTimestamp()
-    });
+    await setDoc(doc(db, "users", u.uid), { uid: u.uid, name: u.displayName || "", email: u.email || "", photo: u.photoURL || "", role, createdAt: serverTimestamp() });
     S.role = role; $("roleDlg").close(); startApp();
   } catch (err) { toast("Could not save your role: " + (err.code || err.message)); }
 };
 
-function showLogin() { $("loginView").hidden = false; $("appView").hidden = true; $("who").hidden = true; }
-
-/* ---------- 6. Live data ---------- */
 function startApp() {
   $("loginView").hidden = true; $("appView").hidden = false; $("who").hidden = false;
-  $("avatar").src = S.user.photoURL || ""; $("uname").textContent = S.user.displayName || S.user.email;
-  $("rolechip").textContent = ROLES[S.role].label;
-  S.tab = S.role === "warehouse" ? "pick" : "moves";
-  const listen = (name, key) => S.unsubs.push(onSnapshot(collection(db, name),
-    snap => { S[key] = snap.docs.map(d => ({ id: d.id, ...d.data() })); render(); },
-    err => toast(`Could not load ${name}: ${err.code || err.message}`)));
-  listen("moves", "moves"); listen("findings", "findings"); listen("rules", "rules"); listen("calendar", "calendar");
+  $("avatar").src = S.user.photoURL || ""; $("uname").textContent = S.user.displayName || S.user.email; $("rolechip").textContent = ROLES[S.role][0];
+  S.tab = S.role === "warehouse" ? "pick" : S.role === "area_manager" ? "alerts" : "today";
+  for (const k of ["moves", "findings", "rules", "calendar", "data_guide", "brief"])
+    S.unsubs.push(onSnapshot(collection(db, k), snap => {
+      S[k] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (k === "moves") { S.moves.sort((a, b) => rank(b) - rank(a)); if (!S.t0 && S.moves.length) S.t0 = Date.now(); }
+      render();
+    }, err => toast(`Could not load ${k}: ${err.code || err.message}`)));
   render();
 }
-function stopListening() { S.unsubs.forEach(u => u()); S.unsubs = []; S.moves = S.findings = S.rules = S.calendar = []; }
+function stopListening() { S.unsubs.forEach(u => u()); S.unsubs = []; S.moves = []; S.findings = []; S.rules = []; S.calendar = []; S.data_guide = []; S.brief = []; }
 
-/* ---------- 7. Render ---------- */
-function tabsForRole() {
-  if (S.role === "warehouse") return [["pick", "Pick list"], ["returns", "Incoming pull-backs"], ["rules", "Rules and calendar"]];
-  if (S.role === "area_manager") return [["moves", "Moves"], ["findings", "Data alerts"], ["rules", "Rules and calendar"]];
-  return [["moves", "Moves to approve"], ["findings", "Hidden problems found"], ["rules", "Rules and calendar"]];
+/* ---------- game ---------- */
+function game() {
+  const total = S.moves.length, decided = S.moves.filter(m => m.status !== "proposed").length, done = total > 0 && decided === total;
+  const mine = S.moves.filter(m => m.status !== "proposed" && m.decidedBy === S.user.email);
+  const pts = mine.reduce((a, m) => a + (m.status === "approved" ? 10 : 5), 0) + (done ? 20 : 0);
+  const lvl = [...LEVELS].reverse().find(l => pts >= l[0]), next = LEVELS.find(l => l[0] > pts);
+  if (done && !S.doneAt) S.doneAt = Date.now(); if (!done) S.doneAt = null;
+  const secs = S.t0 ? Math.floor(((S.doneAt || Date.now()) - S.t0) / 1000) : 0;
+  const clean = !S.moves.some(m => m.status === "approved" && check(m).v.length);
+  const seen = getSeen().filter(id => S.findings.some(f => f.id === id)).length;
+  const badges = [["First decision", mine.length > 0], ["Halfway there", total > 0 && decided / total >= .5], ["List cleared", done],
+    ["Speed star: under 10 minutes", done && secs <= GOAL_SECS], ["Rule keeper: nothing risky approved", done && clean], ["Problem spotter: checked every finding", S.findings.length > 0 && seen === S.findings.length]];
+  return `<div class="game"><div class="gtop"><b>${lvl[1]}</b><span>${pts} points${next ? `, ${next[0] - pts} to ${next[1]}` : ""}</span>
+    <span>${decided} of ${total} moves decided</span><span id="timer" style="margin-left:auto;font-weight:700"></span></div>
+    <div class="bar"><i style="width:${total ? Math.round(decided / total * 100) : 0}%"></i></div>
+    <div class="badges">${badges.map(([n, g]) => `<span class="badge ${g ? "got" : ""}">${g ? "Earned: " : ""}${n}</span>`).join("")}</div></div>`;
+}
+function tick() {
+  const el = $("timer"); if (!el) return;
+  const secs = S.t0 ? Math.floor(((S.doneAt || Date.now()) - S.t0) / 1000) : 0, m = (n) => String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
+  el.textContent = S.doneAt ? `Cleared in ${m(secs)}` : secs <= GOAL_SECS ? `${m(GOAL_SECS - secs)} left in the 10-minute challenge` : `${m(secs - GOAL_SECS)} over the 10-minute goal`;
+}
+setInterval(tick, 1000);
+
+/* ---------- views ---------- */
+function tabs() {
+  const common = [["findings", "Hidden problems"], ["rules", "Rules and calendar"], ["about", "About the data"]];
+  return S.role === "warehouse" ? [["pick", "Pick list"], ["returns", "Coming back"], ...common.slice(1)]
+    : S.role === "area_manager" ? [["alerts", "My alerts"], ["all", "All moves"], ...common] : [["today", "Today's moves"], ...common];
 }
 function render() {
   if (!S.role) return;
-  const sorted = S.moves;
-  const by = s => sorted.filter(m => m.status === s);
-  const val = arr => arr.reduce((a, m) => a + m.qty * m.mrp, 0);
-  $("stats").innerHTML = [
-    [sorted.length, "moves proposed today"], [by("approved").length, "approved"], [by("skipped").length, "skipped"],
-    [inr(val(by("approved"))), "approved value at MRP"]
-  ].map(([n, l]) => `<div class="stat"><b>${esc(n)}</b><span>${l}</span></div>`).join("");
-
-  $("tabs").innerHTML = tabsForRole().map(([k, l]) =>
-    `<button class="tab" role="tab" aria-selected="${S.tab === k}" data-tab="${k}">${l}</button>`).join("");
-  $("tabs").querySelectorAll(".tab").forEach(b => b.onclick = () => { S.tab = b.dataset.tab; render(); });
-
-  const p = $("panel");
-  if (S.tab === "moves") p.innerHTML = movesView();
-  else if (S.tab === "findings") p.innerHTML = findingsView();
-  else if (S.tab === "rules") p.innerHTML = rulesView();
-  else if (S.tab === "pick") p.innerHTML = pickView();
-  else if (S.tab === "returns") p.innerHTML = returnsView();
-  wire();
+  const ms = S.moves, units = ms.reduce((a, m) => a + m.qty, 0), val = ms.reduce((a, m) => a + m.qty * m.mrp, 0);
+  const care = ms.filter(m => check(m).approval || check(m).v.length).length, urg = ms.filter(urgent).length;
+  $("hero").innerHTML = `<p class="hero">${ms.length ? `Today there are ${ms.length} suggested moves, ${units} units worth ${inr(val)}. ${urg ? `${urg} ${urg === 1 ? "is" : "are"} urgent. ` : ""}${care ? `${care} need${care === 1 ? "s" : ""} a careful look.` : "None need extra care."}` : "No moves yet. They appear here as soon as the engine writes them."}</p>`;
+  $("game").innerHTML = S.role === "merchandiser" ? game() : "";
+  $("tabs").innerHTML = tabs().map(([k, l]) => `<button class="tab" role="tab" aria-selected="${S.tab === k}" data-tab="${k}">${l}</button>`).join("");
+  const v = { today: () => today(true), all: () => today(false), alerts: alerts, pick: pick, returns: returns, findings: findings, rules: rules, about: about }[S.tab];
+  $("panel").innerHTML = v();
+  wire(); tick();
 }
-
-function movesView() {
-  const editable = S.role === "merchandiser";
+function moveCard(m, edit) {
+  const c = check(m), q = edit && m.status === "proposed" ? `<input class="qty" type="number" min="1" max="${avail(m) ?? ""}" value="${m.qty}" data-qty="${esc(m.id)}" aria-label="Quantity">` : m.qty;
+  const verb = m.type === "pull_back" ? "Bring back" : m.type === "store_store" ? "Move" : "Send";
+  const tags = [urgent(m) ? `<span class="tag bad">urgent</span>` : "", c.approval && !m.exception ? `<span class="tag warn">over Rs 1 lakh, needs approval</span>` : "",
+    m.exception ? `<span class="tag warn">exception: ${esc(m.exception)}</span>` : "", ...c.v.map(x => `<span class="tag bad">rule broken: ${esc(x)}</span>`), c.v.length ? "" : `<span class="tag good">all rules pass</span>`,
+    m.skipReason ? `<span class="tag">skipped: ${esc(m.skipReason)}</span>` : ""].join("");
+  const act = !edit ? `<span class="tag ${m.status === "approved" ? "good" : ""}">${m.status === "proposed" ? "waiting" : esc(m.status)}</span>` : m.status === "proposed"
+    ? `<button class="btn sm ok" data-approve="${esc(m.id)}">Approve</button><button class="btn sm" data-skip="${esc(m.id)}">Skip</button>`
+    : `<span class="tag ${m.status === "approved" ? "good" : ""}">${esc(m.status)}</span><button class="btn sm" data-reset="${esc(m.id)}">Undo</button>`;
+  return `<article class="mv ${m.type} ${c.v.length ? "bad" : ""} ${m.status === "skipped" ? "skipped" : ""}"><div class="mvh"><span>${verb} ${q} x ${esc(m.sku)} <em>from ${esc(m.from)} to ${esc(m.to)}</em></span><span>${inr(c.value)}</span></div>
+    <p class="why">${esc(reason(m))}</p><p class="nums">${esc(facts(m))}</p><div>${tags}</div><div class="acts">${act}</div></article>`;
+}
+function grouped(list, edit) {
+  return Object.entries(TYPES).map(([t, name]) => {
+    const g = list.filter(m => m.type === t); if (!g.length) return "";
+    return `<section class="grp"><h3>${name}</h3><p class="sum">${g.length} ${g.length === 1 ? "move" : "moves"}, ${g.reduce((a, m) => a + m.qty, 0)} units, ${inr(g.reduce((a, m) => a + m.qty * m.mrp, 0))}</p>${g.map(m => moveCard(m, edit)).join("")}</section>`;
+  }).join("");
+}
+function today(edit) {
   const stores = [...new Set(S.moves.flatMap(m => [m.from, m.to]))].filter(x => x !== "WH-KOL").sort();
   const list = S.moves.filter(m => S.store === "all" || m.from === S.store || m.to === S.store);
-  const routine = list.filter(m => m.status === "proposed" && !check(m).needsApproval && !check(m).violations.length);
-  const bar = `<div class="bar">
-    <label>Store <select id="storeSel"><option value="all">All stores</option>${stores.map(s => `<option ${S.store === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label>
-    <div class="grow">
-      ${editable ? `<button class="btn primary" id="approveRoutine" ${routine.length ? "" : "disabled"}>Approve ${routine.length} routine moves</button>` : ""}
-    </div></div>`;
-  if (!list.length) return bar + `<div class="empty">No moves yet. Run the engine, or use the demo upload button.</div>`;
-  const rows = list.map(m => {
-    const c = check(m);
-    const tags = [
-      c.needsApproval && !m.exception ? `<span class="tag warn">over Rs 1 lakh: needs approval</span>` : "",
-      m.exception ? `<span class="tag warn">exception: ${esc(m.exception)}</span>` : "",
-      ...c.violations.map(v => `<span class="tag bad">rule: ${esc(v)}</span>`),
-      !c.violations.length ? `<span class="tag good">rules pass</span>` : "",
-      m.source === "demo" ? `<span class="tag">demo</span>` : ""
-    ].join("");
-    const qty = editable && m.status === "proposed"
-      ? `<input class="qty" type="number" min="1" max="${available(m) ?? ""}" value="${m.qty}" data-qty="${esc(m.id)}" aria-label="Quantity">` : m.qty;
-    const act = editable
-      ? (m.status === "proposed"
-          ? `<div class="actions"><button class="btn sm ok" data-approve="${esc(m.id)}">Approve</button><button class="btn sm" data-skip="${esc(m.id)}">Skip</button></div>`
-          : `<div class="actions"><span class="tag ${m.status === "approved" ? "good" : ""}">${m.status}</span><button class="btn sm" data-reset="${esc(m.id)}">Undo</button></div>`)
-      : `<span class="tag ${m.status === "approved" ? "good" : ""}">${esc(m.status)}</span>`;
-    return `<tr class="${c.violations.length ? "violation" : ""} ${m.status === "skipped" ? "skipped" : ""}">
-      <td class="type ${m.type}">${TYPE_LABEL[m.type]}</td>
-      <td>${esc(m.from)} to ${esc(m.to)}</td><td>${esc(m.sku)}</td>
-      <td class="num">${qty}</td><td class="num">${inr(c.value)}</td>
-      <td class="why">${esc(reason(m))}<div style="margin-top:6px">${tags}${m.skipReason ? `<span class="tag">skipped: ${esc(m.skipReason)}</span>` : ""}</div></td>
-      <td>${act}</td></tr>`;
-  }).join("");
-  return bar + `<div class="tablewrap"><table><thead><tr><th>Type</th><th>Move</th><th>SKU</th><th class="num">Qty</th><th class="num">Value at MRP</th><th>Why</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const routine = list.filter(m => m.status === "proposed" && !check(m).approval && !check(m).v.length);
+  return `<div class="tools"><label>Show store <select id="storeSel"><option value="all">All stores</option>${stores.map(s => `<option ${S.store === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label>
+    ${edit ? `<span class="r"><button class="btn primary" id="approveRoutine" ${routine.length ? "" : "disabled"}>Approve all ${routine.length} routine moves</button></span>` : ""}</div>
+    ${list.length ? grouped(list, edit) : `<div class="empty">No moves to show.</div>`}`;
 }
-
-function pickView() {
+function alerts() {
+  const top = S.moves.filter(m => m.status !== "skipped" && (urgent(m) || check(m).approval || check(m).v.length)).slice(0, AM_ALERTS);
+  return `<p class="sum">You only read about ${AM_ALERTS} alerts a week, so these are the most important ones.</p>${top.length ? top.map(m => moveCard(m, false)).join("") : `<div class="empty">Nothing needs your attention right now.</div>`}`;
+}
+function pick() {
   const list = S.moves.filter(m => m.type === "wh_store" && m.status === "approved");
-  const bar = "";
-  if (!list.length) return bar + `<div class="empty">Nothing to pick yet. The merchandiser has not approved any warehouse dispatches.</div>`;
-  const groups = {};
-  list.forEach(m => (groups[m.to] ||= []).push(m));
-  return bar + Object.entries(groups).sort().map(([store, ms]) => `<div class="group"><h3>${esc(store)}</h3>
-    <div class="tablewrap"><table style="min-width:520px"><thead><tr><th>SKU</th><th class="num">Qty to pick</th><th class="num">Lead (days)</th></tr></thead><tbody>
-    ${ms.map(m => `<tr><td>${esc(m.sku)}</td><td class="num">${m.qty}</td><td class="num">${esc(m.evidence?.lead ?? "")}</td></tr>`).join("")}
-    </tbody></table></div></div>`).join("");
+  if (!list.length) return `<div class="empty">Nothing to pick yet. The merchandiser has not approved any warehouse dispatches.</div>`;
+  const g = {}; list.forEach(m => (g[m.to] ||= []).push(m));
+  return `<p class="sum">${list.length} lines, ${list.reduce((a, m) => a + m.qty, 0)} units to pick, for ${Object.keys(g).length} stores.</p>` + Object.entries(g).sort().map(([s, ms]) =>
+    `<section class="grp"><h3>${esc(s)}</h3><table><tr><th>SKU</th><th class="n">Units to pick</th><th class="n">Arrives in (days)</th></tr>${ms.map(m => `<tr><td>${esc(m.sku)}</td><td class="n">${m.qty}</td><td class="n">${esc(m.evidence?.lead ?? "")}</td></tr>`).join("")}</table></section>`).join("");
 }
-function returnsView() {
-  const list = S.moves.filter(m => m.type === "pull_back" && m.status === "approved");
-  if (!list.length) return `<div class="empty">No approved pull-backs are heading to the warehouse.</div>`;
-  return `<div class="tablewrap"><table style="min-width:520px"><thead><tr><th>From</th><th>SKU</th><th class="num">Qty</th><th class="num">Lead (days)</th></tr></thead><tbody>
-    ${list.map(m => `<tr><td>${esc(m.from)}</td><td>${esc(m.sku)}</td><td class="num">${m.qty}</td><td class="num">${esc(m.evidence?.lead ?? "")}</td></tr>`).join("")}</tbody></table></div>`;
+function returns() {
+  const l = S.moves.filter(m => m.type === "pull_back" && m.status === "approved");
+  return l.length ? `<table><tr><th>From store</th><th>SKU</th><th class="n">Units</th></tr>${l.map(m => `<tr><td>${esc(m.from)}</td><td>${esc(m.sku)}</td><td class="n">${m.qty}</td></tr>`).join("")}</table>` : `<div class="empty">No approved pull-backs are on their way back.</div>`;
 }
-function findingsView() {
+function findings() {
+  const grp = f => ["hold", "quarantine"].includes(f.action) ? 0 : ["exception", "move proposed"].includes(f.action) ? 1 : 2;
+  const names = ["Check these first: possible data errors", "Stores to watch", "Good to know"], seen = getSeen();
   if (!S.findings.length) return `<div class="empty">No findings yet.</div>`;
-  return `<div class="cards">${S.findings.map(f => `<div class="card ${esc(f.severity)}">
-    <h3>${esc(f.title)}</h3><p>${esc(f.detail)}</p>
-    <div style="margin-top:8px"><span class="tag">${esc(f.ref)}</span><span class="tag ${f.action === "hold" || f.action === "quarantine" ? "warn" : ""}">${esc(f.action)}</span></div></div>`).join("")}</div>`;
+  return `<p class="sum">${seen.filter(id => S.findings.some(f => f.id === id)).length} of ${S.findings.length} checked.</p>` + names.map((n, i) => {
+    const l = S.findings.filter(f => grp(f) === i); if (!l.length) return "";
+    return `<section class="grp"><h3>${n}</h3><div class="cards">${l.map(f => `<div class="card ${esc(f.severity)} ${seen.includes(f.id) ? "seen" : ""}"><h4>${esc(f.title)}</h4><p>${esc(f.detail)}</p>
+      <span class="tag">${esc(f.ref)}</span><span class="tag ${i === 0 ? "warn" : ""}">${esc(f.action)}</span><div class="acts">${seen.includes(f.id) ? `<span class="tag good">checked</span>` : `<button class="btn sm" data-seen="${esc(f.id)}">Mark as checked</button>`}</div></div>`).join("")}</div></section>`;
+  }).join("");
 }
-function rulesView() {
-  const r = S.rules.length ? S.rules.map(x => `<div class="card"><h3>${esc(x.title)}</h3><p>${esc(x.text)}</p></div>`).join("") : `<div class="empty">No rules loaded.</div>`;
-  const c = S.calendar.length ? S.calendar.map(x => `<div class="card"><h3>${esc(x.festival)}</h3><p>${esc(x.dates)}. ${esc(x.where)}</p></div>`).join("") : "";
-  return `<div class="group"><h3>Rules every move must pass</h3><div class="cards">${r}</div></div>
-          ${c ? `<div class="group"><h3>Calendar</h3><div class="cards">${c}</div></div>` : ""}`;
+function rules() {
+  const days = t => { const m = /(\d+)(?: to \d+)? (\w{3}) (\d{4})/.exec(t || ""); if (!m) return null; const d = Date.parse(`${m[1]} ${m[2]} ${m[3]} UTC`); return isNaN(d) ? null : Math.round((d - PLAN) / 864e5); };
+  const cal = S.calendar.map(c => { const d = days(c.dates); return `<div class="card"><h4>${esc(c.festival)}</h4><p>${esc(c.dates)}. ${esc(c.where)}${d != null ? `. ${d} days after the planning day (${day(0)} ${new Date(PLAN).getUTCFullYear()}).` : ""}</p></div>`; }).join("");
+  const set = { "Store rules": ["r1", "r2", "r3", "r4", "r5"], "Approval and timing": ["r6", "r8"], "Reading the data": ["r7"] };
+  const used = Object.values(set).flat(), rest = S.rules.filter(r => !used.includes(r.id));
+  const sec = (n, l) => l.length ? `<section class="grp"><h3>${n}</h3><div class="cards">${l.map(r => `<div class="card"><h4>${esc(r.title)}</h4><p>${esc(r.text)}</p></div>`).join("")}</div></section>` : "";
+  return Object.entries(set).map(([n, ids]) => sec(n, S.rules.filter(r => ids.includes(r.id)))).join("") + sec("Other rules", rest) + (cal ? `<section class="grp"><h3>Festivals and weddings</h3><div class="cards">${cal}</div></section>` : "");
+}
+function about() {
+  const b = S.brief[0], n = b?.network;
+  const top = b ? `<section class="grp"><h3>The big picture</h3><p>${esc(b.goal)}</p><p class="sum">${n ? `${n.stores} stores in ${n.cities} cities, plus warehouse ${esc(n.warehouse)}. ` : ""}Sales run ${esc(b.dates?.salesFrom)} to ${esc(b.dates?.salesTo)}. Stock is as of ${esc(b.dates?.stockAsOf)}.</p></section>` : "";
+  const guide = Object.entries(GENRES).map(([g, ids]) => {
+    const l = S.data_guide.filter(d => ids.includes(d.id)); if (!l.length) return "";
+    const rows = l.reduce((a, d) => a + (d.rows || 0), 0);
+    return `<section class="grp"><h3>${g}</h3><p class="sum">${l.length} tables${rows ? `, ${rows.toLocaleString("en-IN")} rows` : ""}</p><table>${l.map(d => `<tr><td><b>${esc(d.tab)}</b></td><td>${esc(d.useFor)}</td><td class="n">${d.rows ? d.rows.toLocaleString("en-IN") : ""}</td></tr>`).join("")}</table></section>`;
+  }).join("");
+  return top + guide + `<section class="grp"><h3>Words used here</h3><div class="cards">${WORDS.map(([w, d]) => `<div class="card"><h4>${w}</h4><p>${d}</p></div>`).join("")}</div></section>`;
 }
 
-/* ---------- 8. Actions (merchandiser only; writes go to Firestore) ---------- */
+/* ---------- actions ---------- */
 const byId = id => S.moves.find(m => m.id === id);
 async function decide(id, patch) {
   try { await updateDoc(doc(db, "moves", id), { ...patch, decidedBy: S.user.email, decidedAt: serverTimestamp() }); }
-  catch (err) { toast("Could not save: " + (err.code || err.message)); }
+  catch (e) { toast("Could not save: " + (e.code || e.message)); }
 }
+let skipTarget = null;
 function wire() {
-  const q = (sel, fn) => $("panel").querySelectorAll(sel).forEach(fn);
+  const q = (s, f) => $("panel").querySelectorAll(s).forEach(f);
+  $("tabs").querySelectorAll(".tab").forEach(b => b.onclick = () => { S.tab = b.dataset.tab; render(); });
   const ss = $("storeSel"); if (ss) ss.onchange = () => { S.store = ss.value; render(); };
   q("[data-approve]", b => b.onclick = () => {
     const m = byId(b.dataset.approve), c = check(m);
-    if (c.violations.length && !confirm("This move breaks a rule:\n- " + c.violations.join("\n- ") + "\nApprove anyway?")) return;
+    if (c.v.length && !confirm("This move breaks a rule:\n- " + c.v.join("\n- ") + "\nApprove anyway?")) return;
     decide(m.id, { status: "approved", skipReason: null });
   });
   q("[data-reset]", b => b.onclick = () => decide(b.dataset.reset, { status: "proposed", skipReason: null }));
-  q("[data-skip]", b => b.onclick = () => {
-    const m = byId(b.dataset.skip); skipTarget = m;
-    $("skipWhat").textContent = `${m.qty} x ${m.sku}, ${m.from} to ${m.to}`; $("skipDlg").showModal();
-  });
-  q("[data-qty]", i => i.onchange = () => {
-    const m = byId(i.dataset.qty), n = Math.max(1, Math.floor(+i.value || m.qty));
-    decide(m.id, { qty: n, value: n * m.mrp });
-  });
+  q("[data-skip]", b => b.onclick = () => { skipTarget = byId(b.dataset.skip); $("skipWhat").textContent = `${skipTarget.qty} x ${skipTarget.sku}, ${skipTarget.from} to ${skipTarget.to}`; $("skipDlg").showModal(); });
+  q("[data-qty]", i => i.onchange = () => { const m = byId(i.dataset.qty), n = Math.min(avail(m) ?? Infinity, Math.max(1, Math.floor(+i.value || m.qty))); decide(m.id, { qty: n }); });
+  q("[data-seen]", b => b.onclick = () => { try { localStorage.setItem(seenKey(), JSON.stringify([...new Set([...getSeen(), b.dataset.seen])])); } catch {} render(); });
   const ar = $("approveRoutine");
   if (ar) ar.onclick = async () => {
-    const list = S.moves.filter(m => (S.store === "all" || m.from === S.store || m.to === S.store)
-      && m.status === "proposed" && !check(m).needsApproval && !check(m).violations.length);
-    try {
-      const b = writeBatch(db);
-      list.forEach(m => b.update(doc(db, "moves", m.id), { status: "approved", decidedBy: S.user.email, decidedAt: serverTimestamp() }));
-      await b.commit(); toast(`Approved ${list.length} routine moves.`);
-    } catch (err) { toast("Could not approve: " + (err.code || err.message)); }
+    const l = S.moves.filter(m => (S.store === "all" || m.from === S.store || m.to === S.store) && m.status === "proposed" && !check(m).approval && !check(m).v.length);
+    try { const b = writeBatch(db); l.forEach(m => b.update(doc(db, "moves", m.id), { status: "approved", decidedBy: S.user.email, decidedAt: serverTimestamp() })); await b.commit(); toast(`Approved ${l.length} routine moves.`); }
+    catch (e) { toast("Could not approve: " + (e.code || e.message)); }
   };
 }
-let skipTarget = null;
 $("skipCancel").onclick = () => $("skipDlg").close();
-$("skipForm").onsubmit = e => {
-  e.preventDefault();
-  decide(skipTarget.id, { status: "skipped", skipReason: $("skipReason").value });
-  $("skipDlg").close();
-};
-
-/* DELETE-SEED-BUTTON JS START
-   Everything between this line and "DELETE-SEED-BUTTON JS END" is demo-only. Delete it with the
-   CSS block and the HTML button (search the file for DELETE-SEED-BUTTON) when you no longer need it.
-   Demo numbers are illustrative; only the items marked (brief) come from the PDF / decisions doc. */
-const DEMO = {
-  moves: [
-    { id: "m1", type: "wh_store", from: "WH-KOL", to: "MZF-01", sku: "MOJ-01-9", qty: 6, mrp: 2199,
-      evidence: { unitLabel: "Mojari", onHand: 5, minDisplay: 8, vel: 0.4, dstUnits: 128, cap: 350, lead: 3, whAvail: 40, festival: "Chhath on 15 Nov (Bihar)" } },   // (brief) MZF-01 128/350, Mojari 5 < min 8
-    { id: "m2", type: "wh_store", from: "WH-KOL", to: "BLR-05", sku: "SHW-02-L", qty: 3, mrp: 27699,
-      exception: "thin data, store opened 10 Oct 2026",
-      evidence: { unitLabel: "Sherwani", onHand: 2, minDisplay: 5, vel: null, dstUnits: 2, cap: 300, lead: 6, whAvail: 12, festival: "Diwali on 8 Nov" } },            // (brief) BLR-05 Sherwani 2 < min 5; South lead 6 days
-    { id: "m3", type: "wh_store", from: "WH-KOL", to: "LKO-03", sku: "KUR-12-XL", qty: 20, mrp: 6799,
-      evidence: { onHand: 6, vel: 0.9, dstUnits: 40, cap: 600, lead: 2, whAvail: 85, festival: "Diwali on 8 Nov" } },
-    { id: "m4", type: "store_store", from: "LKO-02", to: "LKO-03", sku: "KUR-05-L", qty: 4, mrp: 5999,
-      evidence: { srcOnHand: 30, srcVel: 0.5, dstOnHand: 2, dstVel: 0.6, dstUnits: 60, cap: 600, lead: 1 } },
-    { id: "m5", type: "pull_back", from: "KNP-01", to: "WH-KOL", sku: "JKT-03-L", qty: 5, mrp: 4999,
-      evidence: { onHand: 5, ageDays: 140, sold28: 0, inStock28: 28, lead: 2 } }
-  ].map(m => ({ ...m, status: "proposed", source: "demo" })),
-  findings: [
-    { id: "f1", severity: "high", action: "hold", ref: "KNP-03 SHW-02-L", title: "Suspected keying error: 300 units",
-      detail: "Snapshot says 300 on hand, weekly closing says 0 with 0 days in stock on the same date. Worth Rs 83,09,700 at MRP. On its own it makes KNP-03 look 208% full (520 of 250 instead of 220). Do not pull back; hold for a physical count." },
-    { id: "f2", severity: "high", action: "quarantine", ref: "MYS-02 KUR-02-M", title: "Negative stock: -4",
-      detail: "Snapshot on_hand is -4 while weekly closing is 3. Treated as a data error. This location and SKU neither send nor receive." },
-    { id: "f3", severity: "med", action: "move proposed", ref: "MZF-01", title: "Real under-stock",
-      detail: "Store holds 128 of 350 capacity and Mojari is at 5, under the minimum display of 8." },
-    { id: "f4", severity: "med", action: "exception", ref: "BLR-05", title: "New store, thin history",
-      detail: "Opened 2026-10-10 and billed its first sale the same day. Sherwani is at 2 against a minimum of 5. Every move to it is flagged as an exception." },
-    { id: "f5", severity: "low", action: "rule", ref: "All stores", title: "Zero sales is not always slow",
-      detail: "A SKU with zero sales and few in-stock days was unavailable, not slow. It is never pulled back or given away on that basis." },
-    { id: "f6", severity: "low", action: "counted", ref: "In transit", title: "55 units already on the way",
-      detail: "All arrive on 1 and 2 Nov 2026. They count as stock at the destination and are never sent twice." }
-  ],
-  rules: [
-    { id: "r1", title: "Minimum display", text: "Every store keeps a minimum display per category." },
-    { id: "r2", title: "Capacity", text: "Never fill a store beyond its stock capacity." },
-    { id: "r3", title: "Flagship protection", text: "S++ flagships never give away their top-20 styles." },
-    { id: "r4", title: "Stock in transit", text: "In-transit units count as arriving. Do not send them twice." },
-    { id: "r5", title: "Donor cover", text: "No store-to-store move may leave the giving store with under 30 days of cover." },
-    { id: "r6", title: "Approval limit", text: "A move line worth more than Rs 1,00,000 at MRP needs approval. Moves are never split to avoid it." },
-    { id: "r7", title: "Zero sales is not always slow", text: "Check days in stock before trusting a zero. A SKU that was out of stock is unavailable, not slow." },
-    { id: "r8", title: "Lead times and reasons", text: "Ignore transport cost, but lead times still matter. Every move is explained in one line." }
-  ],
-  data_guide: [
-    { id: "stores", tab: "stores", oneRowIs: "Store", rows: 20, useFor: "City, tier, capacity, area manager" },
-    { id: "area_managers", tab: "area_managers", oneRowIs: "Area manager", rows: 6, useFor: "Who looks after which stores; max_alerts_per_week" },
-    { id: "items", tab: "items", oneRowIs: "SKU (style + size)", rows: 385, useFor: "Category, size, price, launch" },
-    { id: "salespeople", tab: "salespeople", oneRowIs: "Salesperson", rows: 175, useFor: "Who works where, and since when" },
-    { id: "roster_daily", tab: "roster_daily", oneRowIs: "Salesperson per day", rows: 23569, useFor: "Who was on the floor, May to Oct 2026" },
-    { id: "footfall_daily", tab: "footfall_daily", oneRowIs: "Store per day", rows: 13892, useFor: "Walk-ins from the door camera" },
-    { id: "bills", tab: "bills", oneRowIs: "Bill", rows: 90805, useFor: "Every sale: store, salesperson, customer, date" },
-    { id: "bill_lines", tab: "bill_lines", oneRowIs: "Item on a bill", rows: 259772, useFor: "What was on each bill, and at what price" },
-    { id: "stock_snapshot", tab: "stock_snapshot", oneRowIs: "Location x SKU", rows: 3547, useFor: "Stock on 31 Oct 2026, including warehouse and in transit" },
-    { id: "stock_weekly", tab: "stock_weekly", oneRowIs: "Store x SKU x week", rows: 61416, useFor: "Stock and days in stock, last 12 weeks" },
-    { id: "warehouse_inbound", tab: "warehouse_inbound", oneRowIs: "Delivery", rows: 768, useFor: "What is arriving at the warehouse" },
-    { id: "calendar", tab: "calendar", oneRowIs: "Date x state", rows: 2373, useFor: "Festivals and wedding dates" },
-    { id: "stock_rules", tab: "rules, min_display, lead_times, flagship_protected", oneRowIs: "Rule / setting", rows: null, useFor: "Stock rules for Stock Mover" }
-  ],
-  brief: [
-    { id: "case-b", title: "Stock Mover", tagline: "Right stock. Right store. Right size.", company: "Vedant Fashions Limited", event: "AI Hackathon, November 2026",
-      goal: "Every day, find stock that is in the wrong place and produce a ready-to-approve list: what to send from the warehouse, what to move between stores, and what to pull back.",
-      handles: ["Warehouse to store", "Under-stocked stores", "Store to store", "Ageing stock"],
-      dates: { salesFrom: "2024-11-01", salesTo: "2026-10-31", stockAsOf: "2026-10-31", rosterFrom: "2026-05-01", rosterTo: "2026-10-31" },
-      network: { stores: 20, warehouse: "WH-KOL", cities: 6, zones: { North: "Uttar Pradesh", East: "Bihar", South: "Karnataka" }, tiers: "S++ super flagship, S+ flagship, A and B smaller (A better than B)" },
-      categories: ["Sherwani", "Indo-Western", "Kurta Set", "Jacket", "Mojari", "Safa", "Mala", "Stole", "Packaging"],
-      judging: ["Hidden stock problems found", "Numbers spot-checked", "No rule broken", "Runs on its own", "Zero sales is not always slow"] }
-  ],
-  calendar: [
-    { id: "c1", festival: "Diwali", dates: "8 Nov 2026", where: "All three states" },
-    { id: "c2", festival: "Chhath", dates: "15 Nov 2026", where: "Bihar" },
-    { id: "c3", festival: "Wedding dates", dates: "20 to 30 Nov 2026", where: "Auspicious dates in the calendar tab" }
-  ]
-};
-$("seedBtn").onclick = async () => {
-  const btn = $("seedBtn"), st = $("seedStatus");
-  if (!configured) { st.style.color = "#b3261e"; st.textContent = "Firebase config is missing."; return; }
-  if (!confirm("Upload the PDF data and demo data to Firestore? This overwrites moves (resetting approval status), findings, rules, calendar, data_guide and brief documents with the same ids.")) return;
-  btn.disabled = true; btn.textContent = "Uploading..."; st.style.color = ""; st.textContent = "Writing to Firestore...";
-  try {
-    const b = writeBatch(db);
-    let n = 0;
-    for (const [col, items] of Object.entries(DEMO)) items.forEach(({ id, ...data }) => { b.set(doc(db, col, id), data); n++; });
-    await b.commit();
-    st.style.color = "#2f6f43"; st.textContent = `Done: ${n} documents uploaded (moves, findings, rules, calendar, data_guide, brief). Check Firebase console > Firestore > Data.`;
-  } catch (err) {
-    console.error(err);
-    st.style.color = "#b3261e";
-    st.textContent = "Upload failed: " + (err.code || err.message) + (err.code === "permission-denied" ? " (set the temporary open rules from the top of this file, then try again)" : "");
-  } finally { btn.disabled = false; btn.textContent = "Upload PDF + demo data to Firebase"; }
-};
-/* DELETE-SEED-BUTTON JS END */
+$("skipForm").onsubmit = e => { e.preventDefault(); decide(skipTarget.id, { status: "skipped", skipReason: $("skipReason").value }); $("skipDlg").close(); };
 </script>
 </body>
 </html>
