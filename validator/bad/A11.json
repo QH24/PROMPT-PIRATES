@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "note": "R8: KNP-03 SHW-02-L quarantined (snapshot 300 vs weekly 0)",
+  "run": {
+    "date": "2026-10-31",
+    "as_of": "2026-10-31"
+  },
+  "moves": [
+    {
+      "move_id": "KNP-03>WH-KOL>SHW-02-L",
+      "type": "PULL_BACK",
+      "from": "KNP-03",
+      "to": "WH-KOL",
+      "sku_id": "SHW-02-L",
+      "style_id": "SHW-02",
+      "style_name": "Mint Brocade Sherwani",
+      "category": "Sherwani",
+      "size": "L",
+      "qty": 270,
+      "mrp": 27699,
+      "value_mrp": 7478730,
+      "lead_days": 4,
+      "dispatch_on": "2026-10-31",
+      "arrives_on": "2026-11-04",
+      "needs_approval": true,
+      "warnings": [],
+      "routine": false,
+      "reason": "hand-written test move",
+      "evidence": {},
+      "finding_ids": [],
+      "status": "Proposed"
+    }
+  ]
+}

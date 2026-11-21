@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "note": "R8: packaging sku",
+  "run": {
+    "date": "2026-10-31",
+    "as_of": "2026-10-31"
+  },
+  "moves": [
+    {
+      "move_id": "WH-KOL>LKO-01>PKG-BAG",
+      "type": "WH_TO_STORE",
+      "from": "WH-KOL",
+      "to": "LKO-01",
+      "sku_id": "PKG-BAG",
+      "style_id": "PKG-BAG",
+      "style_name": "Carry Bag",
+      "category": "Packaging",
+      "size": "FS",
+      "qty": 1,
+      "mrp": 0,
+      "value_mrp": 0,
+      "lead_days": 4,
+      "dispatch_on": "2026-10-31",
+      "arrives_on": "2026-11-04",
+      "needs_approval": false,
+      "warnings": [],
+      "routine": true,
+      "reason": "hand-written test move",
+      "evidence": {},
+      "finding_ids": [],
+      "status": "Proposed"
+    }
+  ]
+}

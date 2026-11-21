@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "note": "R5: each move alone keeps LKO-02 JKT-02 >= 30 d cover, both together do not",
+  "run": {
+    "date": "2026-10-31",
+    "as_of": "2026-10-31"
+  },
+  "moves": [
+    {
+      "move_id": "LKO-02>LKO-03>JKT-02-M",
+      "type": "STORE_TO_STORE",
+      "from": "LKO-02",
+      "to": "LKO-03",
+      "sku_id": "JKT-02-M",
+      "style_id": "JKT-02",
+      "style_name": "Teal Printed Nehru Jacket",
+      "category": "Jacket",
+      "size": "M",
+      "qty": 3,
+      "mrp": 3199,
+      "value_mrp": 9597,
+      "lead_days": 2,
+      "dispatch_on": "2026-10-31",
+      "arrives_on": "2026-11-02",
+      "needs_approval": false,
+      "warnings": [],
+      "routine": true,
+      "reason": "hand-written test move",
+      "evidence": {},
+      "finding_ids": [],
+      "status": "Proposed"
+    },
+    {
+      "move_id": "LKO-02>LKO-03>JKT-02-XL",
+      "type": "STORE_TO_STORE",
+      "from": "LKO-02",
+      "to": "LKO-03",
+      "sku_id": "JKT-02-XL",
+      "style_id": "JKT-02",
+      "style_name": "Teal Printed Nehru Jacket",
+      "category": "Jacket",
+      "size": "XL",
+      "qty": 3,
+      "mrp": 3199,
+      "value_mrp": 9597,
+      "lead_days": 2,
+      "dispatch_on": "2026-10-31",
+      "arrives_on": "2026-11-02",
+      "needs_approval": false,
+      "warnings": [],
+      "routine": true,
+      "reason": "hand-written test move",
+      "evidence": {},
+      "finding_ids": [],
+      "status": "Proposed"
+    }
+  ]
+}
